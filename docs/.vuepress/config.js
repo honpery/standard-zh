@@ -1,6 +1,7 @@
 module.exports = {
     title: 'Standard Zh',
     description: '规范翻译',
+    base: '/standard-zh/',
     themeConfig: {
         repo: 'honpery/standard-zh',
         sidebarDepth: 6,

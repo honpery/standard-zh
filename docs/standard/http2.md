@@ -104,6 +104,101 @@ described in the Simplified BSD License.
 
 Table of Contents
 
+1. Introduction ....................................................4
+2. HTTP/2 Protocol Overview ........................................5
+    2.1. Document Organization ......................................6
+    2.2. Conventions and Terminology ................................6
+3. Starting HTTP/2 .................................................7
+    3.1. HTTP/2 Version Identification ..............................8
+    3.2. Starting HTTP/2 for "http" URIs ............................8
+        3.2.1. HTTP2-Settings Header Field .........................9
+    3.3. Starting HTTP/2 for "https" URIs ..........................10
+    3.4. Starting HTTP/2 with Prior Knowledge ......................10
+    3.5. HTTP/2 Connection Preface .................................11
+4. HTTP Frames ....................................................12
+    4.1. Frame Format ..............................................12
+    4.2. Frame Size ................................................13
+    4.3. Header Compression and Decompression ......................14
+5. Streams and Multiplexing .......................................15
+    5.1. Stream States .............................................16
+        5.1.1. Stream Identifiers .................................21
+        5.1.2. Stream Concurrency .................................22
+    5.2. Flow Control ..............................................22
+        5.2.1. Flow-Control Principles ............................23
+        5.2.2. Appropriate Use of Flow Control ....................24
+    5.3. Stream Priority ...........................................24
+        5.3.1. Stream Dependencies ................................25
+        5.3.2. Dependency Weighting ...............................26
+        5.3.3. Reprioritization ...................................26
+        5.3.4. Prioritization State Management ....................27
+        5.3.5. Default Priorities .................................28
+    5.4. Error Handling ............................................28
+        5.4.1. Connection Error Handling ..........................29
+        5.4.2. Stream Error Handling ..............................29
+        5.4.3. Connection Termination .............................30
+    5.5. Extending HTTP/2 ..........................................30
+6. Frame Definitions ..............................................31
+    6.1. DATA ......................................................31
+    6.2. HEADERS ...................................................32
+    6.3. PRIORITY ..................................................34
+    6.4. RST_STREAM ................................................36
+    6.5. SETTINGS ..................................................36
+        6.5.1. SETTINGS Format ....................................38
+        6.5.2. Defined SETTINGS Parameters ........................38
+        6.5.3. Settings Synchronization ...........................39
+    6.6. PUSH_PROMISE ..............................................40
+    6.7. PING ......................................................42
+    6.8. GOAWAY ....................................................43
+    6.9. WINDOW_UPDATE .............................................46
+        6.9.1. The Flow-Control Window ............................47
+        6.9.2. Initial Flow-Control Window Size ...................48
+        6.9.3. Reducing the Stream Window Size ....................49
+    6.10. CONTINUATION .............................................49
+7. Error Codes ....................................................50
+8. HTTP Message Exchanges .........................................51
+    8.1. HTTP Request/Response Exchange ............................52
+        8.1.1. Upgrading from HTTP/2 ..............................53
+        8.1.2. HTTP Header Fields .................................53
+        8.1.3. Examples ...........................................57
+        8.1.4. Request Reliability Mechanisms in HTTP/2 ...........60
+    8.2. Server Push ...............................................60
+        8.2.1. Push Requests ......................................61
+        8.2.2. Push Responses .....................................63
+    8.3. The CONNECT Method ........................................64
+9. Additional HTTP Requirements/Considerations ....................65
+    9.1. Connection Management .....................................65
+        9.1.1. Connection Reuse ...................................66
+        9.1.2. The 421 (Misdirected Request) Status Code ..........66
+    9.2. Use of TLS Features .......................................67
+        9.2.1. TLS 1.2 Features ...................................67
+        9.2.2. TLS 1.2 Cipher Suites ..............................68
+10. Security Considerations .......................................69
+    10.1. Server Authority .........................................69
+    10.2. Cross-Protocol Attacks ...................................69
+    10.3. Intermediary Encapsulation Attacks .......................70
+    10.4. Cacheability of Pushed Responses .........................70
+    10.5. Denial-of-Service Considerations .........................70
+        10.5.1. Limits on Header Block Size .......................71
+        10.5.2. CONNECT Issues ....................................72
+    10.6. Use of Compression .......................................72
+    10.7. Use of Padding ...........................................73
+    10.8. Privacy Considerations ...................................73
+11. IANA Considerations ...........................................74
+    11.1. Registration of HTTP/2 Identification Strings ............74
+    11.2. Frame Type Registry ......................................75
+    11.3. Settings Registry ........................................75
+    11.4. Error Code Registry ......................................76
+    11.5. HTTP2-Settings Header Field Registration .................77
+    11.6. PRI Method Registration ..................................78
+    11.7. The 421 (Misdirected Request) HTTP Status Code ...........78
+    11.8. The h2c Upgrade Token ....................................78
+12. References ....................................................79
+    12.1. Normative References .....................................79
+    12.2. Informative References ...................................81
+Appendix A. TLS 1.2 Cipher Suite Black List .......................83
+Acknowledgements ..................................................95
+Authors' Addresses ................................................96
+
 </code>
 </pre>
 </details>
@@ -571,7 +666,7 @@ connection, stream 1 is used for the response.
 </pre>
 </details>
 
-### 3.2.1 HTTP2-Settings 头字段
+#### 3.2.1 HTTP2-Settings 头字段
 
 从HTTP/1.1升级到HTTP/2的请求务必包含一个“HTTP2-Settings”头字段。HTTP2-Settings头字段是特定于连接的头字段，其中包含控制HTTP/2连接的参数，这些参数是在服务器接受升级请求的前提下提供的。
 
@@ -703,7 +798,7 @@ clustered servers, or for network conditions to change.
 </pre>
 </details>
 
-### 3.5。HTTP/2连接序言
+### 3.5 HTTP/2连接序言
 
 在HTTP/2中，要求每个端点发送一个连接序言作为对所使用协议的最终确认，并为HTTP/2连接建立初始设置。客户端和服务器各自发送不同的连接序言。
 
@@ -780,6 +875,612 @@ Clients and servers MUST treat an invalid connection preface as a
 connection error (Section 5.4.1) of type PROTOCOL_ERROR.  A GOAWAY
 frame (Section 6.8) MAY be omitted in this case, since an invalid
 preface indicates that the peer is not using HTTP/2.
+
+</code>
+</pre>
+</details>
+
+## 4. HTTP帧
+
+一旦HTTP / 2连接建立，端点就可以开始交换帧。
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+4.  HTTP Frames
+
+Once the HTTP/2 connection is established, endpoints can begin
+exchanging frames.
+
+</code>
+</pre>
+</details>
+
+### 4.1 帧格式
+
+所有帧均以固定的9字节首部开头，后跟可变长度的有效载荷。
+
+```
++-----------------------------------------------+
+|                 Length (24)                   |
++---------------+---------------+---------------+
+|   Type (8)    |   Flags (8)   |
++-+-------------+---------------+-------------------------------+
+|R|                 Stream Identifier (31)                      |
++=+=============================================================+
+|                   Frame Payload (0...)                      ...
++---------------------------------------------------------------+
+
+                        Figure 1: Frame Layout
+```
+
+帧头的字段定义为：
+
+- 长度(Length)：帧有效载荷的长度，表示为无符号的24位整数。除非接收者为SETTINGS_MAX_FRAME_SIZE设置了更大的值，否则不得发送大于2^14（16,384）的值。
+
+  帧头的9个八位位组不包含在该值中。
+- 类型(Type)：帧的8位类型。帧类型决定了框架的格式和语义。实现必须忽略并丢弃任何类型未知的帧。
+
+- 标志(Flags)：一个8位字段，为特定于帧类型的布尔标志保留。
+  
+  为标志分配特定于所指示帧类型的语义。对于特定帧类型，没有定义语义的标记必须被忽略，并且在发送时必须置为未设置（0x0）。
+
+- R：保留的1位字段。该位的语义是不确定的，发送时该位必须保持未设置状态（0x0），而接收时该位必须忽略。
+
+- 流标识符(Stream Identifier)：流标识符（请参阅第5.1.1节），表示为无符号的31位整数。值0x0保留给与整个连接（而不是单个流）相关联的帧。
+
+帧有效负载的结构和内容完全取决于帧类型。
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+4.1.  Frame Format
+
+All frames begin with a fixed 9-octet header followed by a variable-
+length payload.
+
++-----------------------------------------------+
+|                 Length (24)                   |
++---------------+---------------+---------------+
+|   Type (8)    |   Flags (8)   |
++-+-------------+---------------+-------------------------------+
+|R|                 Stream Identifier (31)                      |
++=+=============================================================+
+|                   Frame Payload (0...)                      ...
++---------------------------------------------------------------+
+
+                        Figure 1: Frame Layout
+
+The fields of the frame header are defined as:
+
+Length:  The length of the frame payload expressed as an unsigned
+    24-bit integer.  Values greater than 2^14 (16,384) MUST NOT be
+    sent unless the receiver has set a larger value for
+    SETTINGS_MAX_FRAME_SIZE.
+
+    The 9 octets of the frame header are not included in this value.
+
+Type:  The 8-bit type of the frame.  The frame type determines the
+    format and semantics of the frame.  Implementations MUST ignore
+    and discard any frame that has a type that is unknown.
+
+Flags:  An 8-bit field reserved for boolean flags specific to the
+    frame type.
+
+    Flags are assigned semantics specific to the indicated frame type.
+    Flags that have no defined semantics for a particular frame type
+    MUST be ignored and MUST be left unset (0x0) when sending.
+
+R: A reserved 1-bit field.  The semantics of this bit are undefined,
+    and the bit MUST remain unset (0x0) when sending and MUST be
+    ignored when receiving.
+
+Stream Identifier:  A stream identifier (see Section 5.1.1) expressed
+    as an unsigned 31-bit integer.  The value 0x0 is reserved for
+    frames that are associated with the connection as a whole as
+    opposed to an individual stream.
+
+The structure and content of the frame payload is dependent entirely
+on the frame type.
+
+</code>
+</pre>
+</details>
+
+### 4.2 帧大小
+
+帧有效负载的大小受接收者在SETTINGS_MAX_FRAME_SIZE设置中发布的最大大小限制。此设置的值可以介于2^14（16,384）和2^24-1（16,777,215）个八位字节之间（包括两端）。
+
+所有实现都必须能够接收和最小处理长度最大为2^14个八位字节的帧，以及9个八位字节的帧头（第4.1节）。说明帧大小时，不包括帧头的大小。
+
+注：某些帧类型（例如PING（第6.7节））对允许的有效载荷数据量施加了其他限制。
+
+如果帧超出了帧头的大小，则端点必须发送错误代码FRAME_SIZE_ERROR。在SETTINGS_MAX_FRAME_SIZE中定义的大小，超出为帧类型定义的任何限制，或者太小而无法包含必需的帧数据。可能会改变整个连接状态的帧中的帧大小错误必须视为连接错误（第5.4.1节）；这包括任何带有标题块（第4.3节）（即HEADERS，PUSH_PROMISE和CONTINUATION），SETTINGS的帧，以及流标识符为0的任何帧。
+
+端点没有义务使用帧中的所有可用空间。通过使用小于允许的最大尺寸的框架进行了改进。发送大帧会导致延迟时间敏感帧（例如RST_STREAM，WINDOW_UPDATE或PRIORITY），如果发送大帧会阻止它们，则可能会影响性能。
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+4.2.  Frame Size
+
+The size of a frame payload is limited by the maximum size that a
+receiver advertises in the SETTINGS_MAX_FRAME_SIZE setting.  This
+setting can have any value between 2^14 (16,384) and 2^24-1
+(16,777,215) octets, inclusive.
+
+All implementations MUST be capable of receiving and minimally
+processing frames up to 2^14 octets in length, plus the 9-octet frame
+header (Section 4.1).  The size of the frame header is not included
+when describing frame sizes.
+
+    Note: Certain frame types, such as PING (Section 6.7), impose
+    additional limits on the amount of payload data allowed.
+
+An endpoint MUST send an error code of FRAME_SIZE_ERROR if a frame
+exceeds the size defined in SETTINGS_MAX_FRAME_SIZE, exceeds any
+limit defined for the frame type, or is too small to contain
+mandatory frame data.  A frame size error in a frame that could alter
+the state of the entire connection MUST be treated as a connection
+error (Section 5.4.1); this includes any frame carrying a header
+block (Section 4.3) (that is, HEADERS, PUSH_PROMISE, and
+CONTINUATION), SETTINGS, and any frame with a stream identifier of 0.
+
+Endpoints are not obligated to use all available space in a frame.
+Responsiveness can be improved by using frames that are smaller than
+the permitted maximum size.  Sending large frames can result in
+delays in sending time-sensitive frames (such as RST_STREAM,
+WINDOW_UPDATE, or PRIORITY), which, if blocked by the transmission of
+a large frame, could affect performance.
+
+</code>
+</pre>
+</details>
+
+### 4.3 头部压缩和解压缩
+
+与HTTP/1中一样，HTTP/2中的头字段是具有一个或多个关联值的名称。头字段用于HTTP请求和响应消息以及服务器推送操作中（请参见8.2节）。
+
+标头列表是零个或多个标头字段的集合。通过连接传输时，头文件列表会使用HTTP头文件压缩[COMPRESSION]序列化到前面的块中。然后将这些序列化的报头块划分为一个或多个八位字节序列，称为报头块片段，并在HEADERS（第6.2节），PUSH_PROMISE（第6.6节）或CONTINUATION（第6.10节）帧的有效载荷内传输。
+
+处理Cookie头字段[COOKIE]特别是通过HTTPmapping（请参阅第8.1.2.5节）。
+
+接收端点通过连接其片段重新组合头块，然后解压缩该块以重建头列表。
+
+完整的头块由以下组成：
+
+- 单个HEADERS或PUSH_PROMISE帧以及END_HEADERS标志集。
+
+- 或者清除了ENDERS标记的HEADERS或PUSH_PROMISE帧以及一个或多个CONTINUATION帧，其中最后一个CONTINUATION帧设置了END_HEADERS标记。
+
+标头压缩是有状态的。一个压缩上下文和一个解压缩上下文用于整个连接。头块中的解码错误必须被视为COMPRESSION_ERROR类型的连接错误（第5.4.1节），
+
+每个头块都作为离散单元处理。报头块必须作为连续的帧序列发送，没有任何其他类型的交错帧或来自任何其他流的帧。 HEADERS或CONTINUATION帧序列中的最后一个帧设置了END_HEADERS标志。 PUSH_PROMISEor CONTINUATION帧序列中的最后一个帧设置了END_HEADERS标志。这使得前导块在逻辑上等效于单个帧。
+
+头块片段只能作为HEADERS，PUSH_PROMISE或CONTINUATION帧的有效负载发送，因为这些帧承载的数据可以修改接收机维护的压缩上下文。接收HEADERS，PUSH_PROMISE或CONTINUATION帧的端点需要重新组合头块并执行解压缩，即使要丢弃这些帧也是如此。如果接收方未解压缩头块，则必须以COMPRESSION_ERROR类型的连接错误（第5.4.1节）终止连接。
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+4.3.  Header Compression and Decompression
+
+Just as in HTTP/1, a header field in HTTP/2 is a name with one or
+more associated values.  Header fields are used within HTTP request
+and response messages as well as in server push operations (see
+Section 8.2).
+
+Header lists are collections of zero or more header fields.  When
+transmitted over a connection, a header list is serialized into a
+header block using HTTP header compression [COMPRESSION].  The
+serialized header block is then divided into one or more octet
+sequences, called header block fragments, and transmitted within the
+payload of HEADERS (Section 6.2), PUSH_PROMISE (Section 6.6), or
+CONTINUATION (Section 6.10) frames.
+
+The Cookie header field [COOKIE] is treated specially by the HTTP
+mapping (see Section 8.1.2.5).
+
+A receiving endpoint reassembles the header block by concatenating
+its fragments and then decompresses the block to reconstruct the
+header list.
+
+A complete header block consists of either:
+
+o  a single HEADERS or PUSH_PROMISE frame, with the END_HEADERS flag
+    set, or
+
+o  a HEADERS or PUSH_PROMISE frame with the END_HEADERS flag cleared
+    and one or more CONTINUATION frames, where the last CONTINUATION
+    frame has the END_HEADERS flag set.
+
+Header compression is stateful.  One compression context and one
+decompression context are used for the entire connection.  A decoding
+error in a header block MUST be treated as a connection error
+(Section 5.4.1) of type COMPRESSION_ERROR.
+
+Each header block is processed as a discrete unit.  Header blocks
+MUST be transmitted as a contiguous sequence of frames, with no
+interleaved frames of any other type or from any other stream.  The
+last frame in a sequence of HEADERS or CONTINUATION frames has the
+END_HEADERS flag set.  The last frame in a sequence of PUSH_PROMISE
+or CONTINUATION frames has the END_HEADERS flag set.  This allows a
+header block to be logically equivalent to a single frame.
+
+Header block fragments can only be sent as the payload of HEADERS,
+PUSH_PROMISE, or CONTINUATION frames because these frames carry data
+that can modify the compression context maintained by a receiver.  An
+endpoint receiving HEADERS, PUSH_PROMISE, or CONTINUATION frames
+needs to reassemble header blocks and perform decompression even if
+the frames are to be discarded.  A receiver MUST terminate the
+connection with a connection error (Section 5.4.1) of type
+COMPRESSION_ERROR if it does not decompress a header block.
+
+</code>
+</pre>
+</details>
+
+# 5. 流和多路复用
+
+`流(stream)`是HTTP/2连接中客户端和服务器之间交换的独立的双向帧序列。
+
+流具有几个重要的特征：
+
+- 单个HTTP/2连接可以包含多个并发打开的流，其中任一端点都可以交错多个流中的帧。
+
+- 流可以被单方面建立和使用，也可以由客户端或服务器共享。 
+
+- 任一端点均可关闭流。 
+
+- 在流上发送帧的顺序很重要。接受者按接收顺序处理帧。特别是，`HEADERS`和`DATA`帧的顺序在语义上很重要。 
+
+- 流由整数标识。通过端点启动流，将流标识符分配给流。
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+5.  Streams and Multiplexing
+
+A "stream" is an independent, bidirectional sequence of frames
+exchanged between the client and server within an HTTP/2 connection.
+Streams have several important characteristics:
+
+o  A single HTTP/2 connection can contain multiple concurrently open
+    streams, with either endpoint interleaving frames from multiple
+    streams.
+
+o  Streams can be established and used unilaterally or shared by
+    either the client or server.
+
+o  Streams can be closed by either endpoint.
+
+o  The order in which frames are sent on a stream is significant.
+    Recipients process frames in the order they are received.  In
+    particular, the order of HEADERS and DATA frames is semantically
+    significant.
+
+o  Streams are identified by an integer.  Stream identifiers are
+    assigned to streams by the endpoint initiating the stream.
+
+</code>
+</pre>
+</details>
+
+
+### 5.1 流状态
+
+流的生命周期如图2所示。
+
+```
+                                +--------+
+                        send PP |        | recv PP
+                       ,--------|  idle  |--------.
+                      /         |        |         \
+                     v          +--------+          v
+              +----------+          |           +----------+
+              |          |          | send H /  |          |
+       ,------| reserved |          | recv H    | reserved |------.
+       |      | (local)  |          |           | (remote) |      |
+       |      +----------+          v           +----------+      |
+       |          |             +--------+             |          |
+       |          |     recv ES |        | send ES     |          |
+       |   send H |     ,-------|  open  |-------.     | recv H   |
+       |          |    /        |        |        \    |          |
+       |          v   v         +--------+         v   v          |
+       |      +----------+          |           +----------+      |
+       |      |   half   |          |           |   half   |      |
+       |      |  closed  |          | send R /  |  closed  |      |
+       |      | (remote) |          | recv R    | (local)  |      |
+       |      +----------+          |           +----------+      |
+       |           |                |                 |           |
+       |           | send ES /      |       recv ES / |           |
+       |           | send R /       v        send R / |           |
+       |           | recv R     +--------+   recv R   |           |
+       | send R /  `----------->|        |<-----------'  send R / |
+       | recv R                 | closed |               recv R   |
+       `----------------------->|        |<----------------------'
+                                +--------+
+
+          send:   endpoint sends this frame
+          recv:   endpoint receives this frame
+
+          H:  HEADERS frame (with implied CONTINUATIONs)
+          PP: PUSH_PROMISE frame (with implied CONTINUATIONs)
+          ES: END_STREAM flag
+          R:  RST_STREAM frame
+
+                          Figure 2: Stream States
+
+```
+
+请注意，此图显示了流状态转换以及仅影响这些转换的帧和标志。在这方面，`CONTINUATION`帧不会导致状态转换。它们实际上是它们遵循的`HEADERS`或`PUSH_PROMISE`的一部分。
+
+为了进行状态转换，将`END_STREAM`标志作为对其承载帧的单独事件进行处理。设置了`END_STREAM`标志的`HEADERS`帧可能导致两个状态转换。
+
+两个端点都具有流状态的主观视图，当传输帧时，状态可能会有所不同。端点不协调流的创建；它们是由任一端点单方面创建的。状态不匹配的负面影响仅限于发送`RST_STREAM`之后的“关闭”状态，其中在关闭后的一段时间内可能会接收到帧。
+
+流具有以下状态：
+
+- idle(空闲)：
+  
+  所有流均以`idle`状态开始。
+  
+  从此状态开始，以下转换有效：
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+5.1.  Stream States
+
+The lifecycle of a stream is shown in Figure 2.
+                                +--------+
+                        send PP |        | recv PP
+                       ,--------|  idle  |--------.
+                      /         |        |         \
+                     v          +--------+          v
+              +----------+          |           +----------+
+              |          |          | send H /  |          |
+       ,------| reserved |          | recv H    | reserved |------.
+       |      | (local)  |          |           | (remote) |      |
+       |      +----------+          v           +----------+      |
+       |          |             +--------+             |          |
+       |          |     recv ES |        | send ES     |          |
+       |   send H |     ,-------|  open  |-------.     | recv H   |
+       |          |    /        |        |        \    |          |
+       |          v   v         +--------+         v   v          |
+       |      +----------+          |           +----------+      |
+       |      |   half   |          |           |   half   |      |
+       |      |  closed  |          | send R /  |  closed  |      |
+       |      | (remote) |          | recv R    | (local)  |      |
+       |      +----------+          |           +----------+      |
+       |           |                |                 |           |
+       |           | send ES /      |       recv ES / |           |
+       |           | send R /       v        send R / |           |
+       |           | recv R     +--------+   recv R   |           |
+       | send R /  `----------->|        |<-----------'  send R / |
+       | recv R                 | closed |               recv R   |
+       `----------------------->|        |<----------------------'
+                                +--------+
+
+          send:   endpoint sends this frame
+          recv:   endpoint receives this frame
+
+          H:  HEADERS frame (with implied CONTINUATIONs)
+          PP: PUSH_PROMISE frame (with implied CONTINUATIONs)
+          ES: END_STREAM flag
+          R:  RST_STREAM frame
+
+                          Figure 2: Stream States
+
+Note that this diagram shows stream state transitions and the frames
+and flags that affect those transitions only.  In this regard,
+CONTINUATION frames do not result in state transitions; they are
+effectively part of the HEADERS or PUSH_PROMISE that they follow.
+
+For the purpose of state transitions, the END_STREAM flag is
+processed as a separate event to the frame that bears it; a HEADERS
+frame with the END_STREAM flag set can cause two state transitions.
+
+Both endpoints have a subjective view of the state of a stream that
+could be different when frames are in transit.  Endpoints do not
+coordinate the creation of streams; they are created unilaterally by
+either endpoint.  The negative consequences of a mismatch in states
+are limited to the "closed" state after sending RST_STREAM, where
+frames might be received for some time after closing.
+
+Streams have the following states:
+
+idle:
+    All streams start in the "idle" state.
+
+    The following transitions are valid from this state:
+
+    *  Sending or receiving a HEADERS frame causes the stream to
+        become "open".  The stream identifier is selected as described
+        in Section 5.1.1.  The same HEADERS frame can also cause a
+        stream to immediately become "half-closed".
+
+    *  Sending a PUSH_PROMISE frame on another stream reserves the
+        idle stream that is identified for later use.  The stream state
+        for the reserved stream transitions to "reserved (local)".
+
+    *  Receiving a PUSH_PROMISE frame on another stream reserves an
+        idle stream that is identified for later use.  The stream state
+        for the reserved stream transitions to "reserved (remote)".
+
+    *  Note that the PUSH_PROMISE frame is not sent on the idle stream
+        but references the newly reserved stream in the Promised Stream
+        ID field.
+
+    Receiving any frame other than HEADERS or PRIORITY on a stream in
+    this state MUST be treated as a connection error (Section 5.4.1)
+    of type PROTOCOL_ERROR.
+
+reserved (local):
+    A stream in the "reserved (local)" state is one that has been
+    promised by sending a PUSH_PROMISE frame.  A PUSH_PROMISE frame
+    reserves an idle stream by associating the stream with an open
+    stream that was initiated by the remote peer (see Section 8.2).
+
+    In this state, only the following transitions are possible:
+
+    *  The endpoint can send a HEADERS frame.  This causes the stream
+        to open in a "half-closed (remote)" state.
+
+    *  Either endpoint can send a RST_STREAM frame to cause the stream
+        to become "closed".  This releases the stream reservation.
+
+
+    An endpoint MUST NOT send any type of frame other than HEADERS,
+    RST_STREAM, or PRIORITY in this state.
+
+    A PRIORITY or WINDOW_UPDATE frame MAY be received in this state.
+    Receiving any type of frame other than RST_STREAM, PRIORITY, or
+    WINDOW_UPDATE on a stream in this state MUST be treated as a
+    connection error (Section 5.4.1) of type PROTOCOL_ERROR.
+
+reserved (remote):
+    A stream in the "reserved (remote)" state has been reserved by a
+    remote peer.
+
+    In this state, only the following transitions are possible:
+
+    *  Receiving a HEADERS frame causes the stream to transition to
+        "half-closed (local)".
+
+    *  Either endpoint can send a RST_STREAM frame to cause the stream
+        to become "closed".  This releases the stream reservation.
+
+    An endpoint MAY send a PRIORITY frame in this state to
+    reprioritize the reserved stream.  An endpoint MUST NOT send any
+    type of frame other than RST_STREAM, WINDOW_UPDATE, or PRIORITY in
+    this state.
+
+    Receiving any type of frame other than HEADERS, RST_STREAM, or
+    PRIORITY on a stream in this state MUST be treated as a connection
+    error (Section 5.4.1) of type PROTOCOL_ERROR.
+
+open:
+    A stream in the "open" state may be used by both peers to send
+    frames of any type.  In this state, sending peers observe
+    advertised stream-level flow-control limits (Section 5.2).
+
+    From this state, either endpoint can send a frame with an
+    END_STREAM flag set, which causes the stream to transition into
+    one of the "half-closed" states.  An endpoint sending an
+    END_STREAM flag causes the stream state to become "half-closed
+    (local)"; an endpoint receiving an END_STREAM flag causes the
+    stream state to become "half-closed (remote)".
+
+    Either endpoint can send a RST_STREAM frame from this state,
+    causing it to transition immediately to "closed".
+
+half-closed (local):
+    A stream that is in the "half-closed (local)" state cannot be used
+    for sending frames other than WINDOW_UPDATE, PRIORITY, and
+    RST_STREAM.
+
+    A stream transitions from this state to "closed" when a frame that
+    contains an END_STREAM flag is received or when either peer sends
+    a RST_STREAM frame.
+
+    An endpoint can receive any type of frame in this state.
+    Providing flow-control credit using WINDOW_UPDATE frames is
+    necessary to continue receiving flow-controlled frames.  In this
+    state, a receiver can ignore WINDOW_UPDATE frames, which might
+    arrive for a short period after a frame bearing the END_STREAM
+    flag is sent.
+
+    PRIORITY frames received in this state are used to reprioritize
+    streams that depend on the identified stream.
+
+half-closed (remote):
+    A stream that is "half-closed (remote)" is no longer being used by
+    the peer to send frames.  In this state, an endpoint is no longer
+    obligated to maintain a receiver flow-control window.
+
+    If an endpoint receives additional frames, other than
+    WINDOW_UPDATE, PRIORITY, or RST_STREAM, for a stream that is in
+    this state, it MUST respond with a stream error (Section 5.4.2) of
+    type STREAM_CLOSED.
+
+    A stream that is "half-closed (remote)" can be used by the
+    endpoint to send frames of any type.  In this state, the endpoint
+    continues to observe advertised stream-level flow-control limits
+    (Section 5.2).
+
+    A stream can transition from this state to "closed" by sending a
+    frame that contains an END_STREAM flag or when either peer sends a
+    RST_STREAM frame.
+
+closed:
+    The "closed" state is the terminal state.
+
+    An endpoint MUST NOT send frames other than PRIORITY on a closed
+    stream.  An endpoint that receives any frame other than PRIORITY
+    after receiving a RST_STREAM MUST treat that as a stream error
+    (Section 5.4.2) of type STREAM_CLOSED.  Similarly, an endpoint
+    that receives any frames after receiving a frame with the
+    END_STREAM flag set MUST treat that as a connection error
+    (Section 5.4.1) of type STREAM_CLOSED, unless the frame is
+    permitted as described below.
+
+    WINDOW_UPDATE or RST_STREAM frames can be received in this state
+    for a short period after a DATA or HEADERS frame containing an
+    END_STREAM flag is sent.  Until the remote peer receives and
+    processes RST_STREAM or the frame bearing the END_STREAM flag, it
+    might send frames of these types.  Endpoints MUST ignore
+    WINDOW_UPDATE or RST_STREAM frames received in this state, though
+    endpoints MAY choose to treat frames that arrive a significant
+    time after sending END_STREAM as a connection error
+    (Section 5.4.1) of type PROTOCOL_ERROR.
+
+    PRIORITY frames can be sent on closed streams to prioritize
+    streams that are dependent on the closed stream.  Endpoints SHOULD
+    process PRIORITY frames, though they can be ignored if the stream
+    has been removed from the dependency tree (see Section 5.3.4).
+
+    If this state is reached as a result of sending a RST_STREAM
+    frame, the peer that receives the RST_STREAM might have already
+    sent -- or enqueued for sending -- frames on the stream that
+    cannot be withdrawn.  An endpoint MUST ignore frames that it
+    receives on closed streams after it has sent a RST_STREAM frame.
+    An endpoint MAY choose to limit the period over which it ignores
+    frames and treat frames that arrive after this time as being in
+    error.
+
+    Flow-controlled frames (i.e., DATA) received after sending
+    RST_STREAM are counted toward the connection flow-control window.
+    Even though these frames might be ignored, because they are sent
+    before the sender receives the RST_STREAM, the sender will
+    consider the frames to count against the flow-control window.
+
+    An endpoint might receive a PUSH_PROMISE frame after it sends
+    RST_STREAM.  PUSH_PROMISE causes a stream to become "reserved"
+    even if the associated stream has been reset.  Therefore, a
+    RST_STREAM is needed to close an unwanted promised stream.
+
+In the absence of more specific guidance elsewhere in this document,
+implementations SHOULD treat the receipt of a frame that is not
+expressly permitted in the description of a state as a connection
+error (Section 5.4.1) of type PROTOCOL_ERROR.  Note that PRIORITY can
+be sent and received in any stream state.  Frames of unknown types
+are ignored.
+
+An example of the state transitions for an HTTP request/response
+exchange can be found in Section 8.1.  An example of the state
+transitions for server push can be found in Sections 8.2.1 and 8.2.2.
 
 </code>
 </pre>

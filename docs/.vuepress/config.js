@@ -4,7 +4,8 @@ module.exports = {
     base: '/standard-zh/',
     themeConfig: {
         repo: 'honpery/standard-zh',
-        sidebarDepth: 6,
+        sidebarDepth: 4,
+        displayAllHeaders: true,
         lastUpdated: 'Last Updated',
         nav: [
             {

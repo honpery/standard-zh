@@ -1,3 +1,7 @@
+---
+sidebarDepth: 4
+---
+
 # HTTP/2
 
 > Hypertext Transfer Protocol Version 2 (HTTP/2) [原文链接](https://tools.ietf.org/html/rfc7540)
@@ -1127,7 +1131,7 @@ COMPRESSION_ERROR if it does not decompress a header block.
 </pre>
 </details>
 
-# 5. 流和多路复用
+## 5. 流和多路复用
 
 `流(stream)`是HTTP/2连接中客户端和服务器之间交换的独立的双向帧序列。
 
@@ -1230,11 +1234,95 @@ o  Streams are identified by an integer.  Stream identifiers are
 
 流具有以下状态：
 
-- idle(空闲)：
+  - idle:
   
-  所有流均以`idle`状态开始。
+    所有流均以`idle`状态开始。
   
-  从此状态开始，以下转换有效：
+    从此状态开始，以下转换有效：
+
+    - 发送或接收`HEADERS`帧会使流变为`open`状态。如第5.1.1节所述选择流标识符。相同的`HEADERS`帧还可以使流立即变为`half-closed`。
+    - 在另一个流上发送`PUSH_PROMISE`帧保留标识为以后使用的空闲流。保留流的流状态转换为`reserved (local)`。
+    - 在另一个流上接收`PUSH_PROMISE`帧将保留一个空闲流，该空闲流将被标识以供以后使用。保留流的流状态转换为`reserved (remote)`。
+    - 请注意，`PUSH_PROMISE`帧不是在空闲流上发送的，而是在Promised Stream ID字段中引用新保留的流。
+
+    在这种状态下，在流上接收到除`HEADERS`或`PRIORITY`以外的任何帧，都必须视为`PROTOCOL_ERROR`类型的连接错误（第5.4.1节）。
+
+
+  - reserved (local):
+
+    处于`reserved (local)`状态的流是通过发送`PUSH_PROMISE`帧承诺的。`PUSH_PROMISE`帧通过将流与远程对等方启动的开放流相关联来保留空闲流（请参见第8.2节）。
+    
+    在这种状态下，只能进行以下转换：
+      
+    - 端点可以发送HEADERS帧。这将导致流以`half-closed (remote)`状态打开。
+    - 任一端点均可发送`RST_STREAM`帧以使流转为`closed`。这将释放流保留。
+    
+    在这种状态下，端点不得发送除`HEADERS`、`RST_STREAM`或`PRIORITY`以外的任何类型的帧。
+    
+    在这种状态下可以接收一个`PRIORITY`或`WINDOW_UPDATE`帧。在这种状态下，在流上接收除`RST_STREAM`、`PRIORITY`或`WINDOW_UPDATE`以外的任何类型的帧，都必须视为`PROTOCOL_ERROR`类型的连接错误（第5.4.1节）。
+  
+  - reserved (remote):
+  
+    处于`reserved (remote)`状态的流已被远程对等方保留。
+    
+    在这种状态下，只能进行以下转换：
+    
+    - 接收`HEADERS`帧会使流转换为`half-closed (local)`。
+    - 任一端点均可发送`RST_STREAM`帧以使流`closed`。这将释放流保留。
+    
+    端点可以在这种状态下发送一个`PRIORITY`帧来重新排序保留流的优先级。在这种状态下，端点不得发送除`RST_STREAM`，`WINDOW_UPDATE`或`PRIORITY`以外的任何类型的帧。
+    
+    在这种状态下，在流上接收除`HEADERS`，`RST_STREAM`或`PRIORITY`以外的任何类型的帧，都必须视为`PROTOCOL_ERROR`类型的连接错误（第5.4.1节）。
+
+  - open:
+    
+    处于`open`状态的流可被两个对等方用来发送任何类型的帧。在这种状态下，发送对等方遵守通告的流级别流控制限制（第5.2节）。
+    
+    从此状态，任一端点都可以发送设置了`END_STREAM`标志的帧，这会使流转换为`half-closed`状态之一。发送`END_STREAM`标志的端点使流状态变为`half-closed (local)`；接收到`END_STREAM`标志的端点使流状态变为`half-closed (remote)`。
+
+    任何一个端点都可以从该状态发送`RST_STREAM`帧，从而使其立即转换为`closed`状态。
+
+  - half-closed (local):
+  
+    处于`half-closed (local)`状态的流不能用于发送`WINDOW_UPDATE`，`PRIORITY`和`RST_STREAM`以外的帧。
+    
+    当收到包含`END_STREAM`标志的帧或任一对等方发送`RST_STREAM`帧时，流将从此状态转换为`closed`。
+    
+    端点可以在此状态下接收任何类型的帧。要继续接收流控制的帧，必须使用`WINDOW_UPDATE`帧提供流控制信用。在这种状态下，接收器可以忽略`WINDOW_UPDATE`帧，这些帧可能在发送带有`END_STREAM`标志的帧之后的短时间内到达。
+    
+    在此状态下接收的`PRIORITY`帧用于重新确定依赖于已标识流的流的优先级。
+
+  - half-closed (remote):
+  
+    对等方不再使用`half-closed (remote):`流发送帧。在这种状态下，端点不再必须维护接收器流控制窗口。
+    
+    如果端点收到处于此状态的流的`WINDOW_UPDATE`，`PRIORITY`或`RST_STREAM`以外的其他帧，则它必须以`STREAM_CLOSED`类型的流错误（第5.4.2节）作出响应。
+    
+    端点可以使用`half-closed (remote)`流来发送任何类型的帧。在这种状态下，端点继续遵守通告的流级流量控制限制（第5.2节）。
+    
+    通过发送包含`END_STREAM`标志的帧或任何一个对等方发送`RST_STREAM`帧，流都可以从此状态转换为`closed`。
+
+  - closed:
+    
+    `closed`状态是终止状态。
+
+    端点不得在封闭流上发送除`PRIORITY`以外的帧。接收到`RST_STREAM`之后接收到除`PRIORITY`以外的任何帧的端点必须将其视为`STREAM_CLOSED`类型的流错误（5.4.2节）。类似地，在接收到设置了`END_STREAM`标志的帧之后接收任何帧的端点务必将其视为`STREAM_CLOSED`类型的连接错误（第5.4.1节），除非如下所述允许该帧。
+
+    发送包含`END_STREAM`标志的`DATA`或`HEADERS`帧后，可以在此状态下短时间内接收`WINDOW_UPDATE`或`RST_STREAM`帧。在远程对等方接收并处理`RST_STREAM`或带有`END_STREAM`标志的帧之前，它可能会发送这些类型的帧。端点必须忽略在这种状态下接收到的`WINDOW_UPDATE`或`RST_STREAM`帧，尽管端点可以选择将发送`END_STREAM`之后很长时间到达的帧视为`PROTOCOL_ERROR`类型的连接错误（第5.4.1节）。
+
+    可以在封闭流上发送`PRIORITY`帧，以区分依赖于封闭流的流的优先级。端点应该处理`PRIORITY`帧，但是如果从依赖关系树中删除了流，则可以忽略它们（参见第5.3.4节）。
+
+    如果由于发送`RST_STREAM`帧而达到此状态，则接收`RST_STREAM`的对等端可能已经发送了（或已排队发送）无法撤消的流上的帧。端点发送`RST_STREAM`帧后，必须忽略其在关闭流上接收的帧。端点可以选择限制其忽略帧的时间段，并将在此时间之后到达的帧视为错误。
+
+    发送`RST_STREAM`之后收到的流控制帧（即`DATA`）计入连接流控制窗口。即使这些帧可能会被忽略，因为它们是在发送方接收`RST_STREAM`之前发送的，因此发送方将考虑将这些帧计入流控制窗口。
+
+    端点在发送`RST_STREAM`之后可能会收到`PUSH_PROMISE`帧。即使相关联的流已被重置，`PUSH_PROMISE`也会使流变为`reserved`。因此，需要`RST_STREAM`来关闭不需要的承诺流。
+
+在本文档其他地方没有更具体的指导的情况下，实现应将状态描述中未明确允许的帧接收视为`PROTOCOL_ERROR`类型的连接错误（第5.4.1节）。请注意，可以在任何流状态下发送和接收`PRIORITY`。未知类型的帧将被忽略。 
+
+HTTP请求/响应交换的状态转换示例可以在第8.1节中找到。有关服务器推送的状态转换的示例，请参见第8.2.1和8.2.2节。
+
+
 
 <details>
 <summary>原文</summary>
@@ -1481,6 +1569,828 @@ are ignored.
 An example of the state transitions for an HTTP request/response
 exchange can be found in Section 8.1.  An example of the state
 transitions for server push can be found in Sections 8.2.1 and 8.2.2.
+
+</code>
+</pre>
+</details>
+
+#### 5.1.1 流标识符
+
+用无符号31位整数来标识流。由客户端发起的流必须使用奇数流标识符。由服务器发起的流必须使用偶数流标识符。流标识符零（0x0）用于连接控制消息。流标识符零不能用于建立新流。
+
+升级到HTTP/2（请参阅第3.2节）的HTTP/1.1请求将以流标识符1（0x1）进行响应。升级完成后，流0x1被`half-closed (local)`到客户端。因此，从HTTP/1.1升级的客户端无法将流0x1选择为新的流标识符。
+
+新建立的流的标识符必须在数值上大于发起端点已打开或保留的所有流。这控制使用`HEADERS`帧打开的流和使用`PUSH_PROMISE`保留的流。收到未知流标识符的端点必须以`PROTOCOL_ERROR`类型的连接错误（第5.4.1节）做出响应。
+
+首次使用新的流标识符会隐式关闭处于`idle`状态的所有流，该流可能已由该对等方使用值较低的流标识符启动。例如，如果客户端在流7上发送`HEADERS`帧而没有在流5上发送帧，则当发送或接收流7的第一个帧时，流5转换为`closed`状态。
+
+流标识符不能重复使用。长期存在的连接可能导致端点耗尽可用范围的流标识符。无法建立新的流标识符的客户端可以为新的流建立新的连接。无法建立新流标识符的服务器可以发送`GOAWAY`帧，以便客户端被迫为新流打开新连接。
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+5.1.1.  Stream Identifiers
+
+Streams are identified with an unsigned 31-bit integer.  Streams
+initiated by a client MUST use odd-numbered stream identifiers; those
+initiated by the server MUST use even-numbered stream identifiers.  A
+stream identifier of zero (0x0) is used for connection control
+messages; the stream identifier of zero cannot be used to establish a
+new stream.
+
+HTTP/1.1 requests that are upgraded to HTTP/2 (see Section 3.2) are
+responded to with a stream identifier of one (0x1).  After the
+upgrade completes, stream 0x1 is "half-closed (local)" to the client.
+Therefore, stream 0x1 cannot be selected as a new stream identifier
+by a client that upgrades from HTTP/1.1.
+
+The identifier of a newly established stream MUST be numerically
+greater than all streams that the initiating endpoint has opened or
+reserved.  This governs streams that are opened using a HEADERS frame
+and streams that are reserved using PUSH_PROMISE.  An endpoint that
+receives an unexpected stream identifier MUST respond with a
+connection error (Section 5.4.1) of type PROTOCOL_ERROR.
+
+The first use of a new stream identifier implicitly closes all
+streams in the "idle" state that might have been initiated by that
+peer with a lower-valued stream identifier.  For example, if a client
+sends a HEADERS frame on stream 7 without ever sending a frame on
+stream 5, then stream 5 transitions to the "closed" state when the
+first frame for stream 7 is sent or received.
+
+Stream identifiers cannot be reused.  Long-lived connections can
+result in an endpoint exhausting the available range of stream
+identifiers.  A client that is unable to establish a new stream
+identifier can establish a new connection for new streams.  A server
+that is unable to establish a new stream identifier can send a GOAWAY
+frame so that the client is forced to open a new connection for new
+streams.
+
+</code>
+</pre>
+</details>
+
+#### 5.1.2 流并发性
+
+对等方可以使用`SETTINGS`帧内的`SETTINGS_MAX_CONCURRENT_STREAMS`参数（请参阅第6.5.2节）来限制并发活动流的数量。最大并发流设置特定于每个端点，并且仅适用于接收该设置的对等方。即，客户端指定服务器可以启动的并发流的最大数量，服务器指定客户端可以启动的并发流的最大数量。
+
+处于`open`状态或处于`half-closed`状态中的任一状态的流均计入允许端点打开的最大流数。这三种状态中任何一种的流都将计入`SETTINGS_MAX_CONCURRENT_STREAMS`设置中公布的限制。处于任何`reserved`状态的流均不会计入流限制。
+
+端点不得超过其对等方设置的限制。接收到导致其通告的并发流限制被超过的`HEADERS`帧的端点必须将此视为`PROTOCOL_ERROR`或`REFUSED_STREAM`类型的流错误（第5.4.2节）。错误代码的选择确定端点是否希望启用自动重试（有关详细信息，请参见第8.1.4节）。
+
+希望将`SETTINGS_MAX_CONCURRENT_STREAMS`的值减小到当前打开流的数量以下的端点可以关闭超过新值的流，或者允许流完成。
+
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+5.1.2.  Stream Concurrency
+
+A peer can limit the number of concurrently active streams using the
+SETTINGS_MAX_CONCURRENT_STREAMS parameter (see Section 6.5.2) within
+a SETTINGS frame.  The maximum concurrent streams setting is specific
+to each endpoint and applies only to the peer that receives the
+setting.  That is, clients specify the maximum number of concurrent
+streams the server can initiate, and servers specify the maximum
+number of concurrent streams the client can initiate.
+
+Streams that are in the "open" state or in either of the "half-
+closed" states count toward the maximum number of streams that an
+endpoint is permitted to open.  Streams in any of these three states
+count toward the limit advertised in the
+SETTINGS_MAX_CONCURRENT_STREAMS setting.  Streams in either of the
+"reserved" states do not count toward the stream limit.
+
+Endpoints MUST NOT exceed the limit set by their peer.  An endpoint
+that receives a HEADERS frame that causes its advertised concurrent
+stream limit to be exceeded MUST treat this as a stream error
+(Section 5.4.2) of type PROTOCOL_ERROR or REFUSED_STREAM.  The choice
+of error code determines whether the endpoint wishes to enable
+automatic retry (see Section 8.1.4) for details).
+
+An endpoint that wishes to reduce the value of
+SETTINGS_MAX_CONCURRENT_STREAMS to a value that is below the current
+number of open streams can either close streams that exceed the new
+value or allow streams to complete.
+
+</code>
+</pre>
+</details>
+
+### 5.2 流控制
+
+使用流进行多路复用会引起TCP连接使用方面的争用，从而导致流阻塞。流控制方案可确保同一连接上的流不会造成相消干扰。流控制既用于单个流，也用于整个连接。 
+
+HTTP/2通过使用`WINDOW_UPDATE`框架提供流控制（第6.9节）。
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+5.2.  Flow Control
+
+Using streams for multiplexing introduces contention over use of the
+TCP connection, resulting in blocked streams.  A flow-control scheme
+ensures that streams on the same connection do not destructively
+interfere with each other.  Flow control is used for both individual
+streams and for the connection as a whole.
+
+HTTP/2 provides for flow control through use of the WINDOW_UPDATE
+frame (Section 6.9).
+
+</code>
+</pre>
+</details>
+
+#### 5.2.1 流控制原理
+
+HTTP/2流流控制旨在允许使用各种流控制算法而无需更改协议。 HTTP/2中的流控制具有以下特征：
+
+  1. 流控制特定于连接。两种类型的流控制都在单跳的端点之间，而不是在整个端到端路径上。
+  
+  2. 流控制基于`WINDOW_UPDATE`帧。接收方通告它们准备在流上以及整个连接中接收多少个八位位组。这是基于信用的方案。
+  
+  3. 流量控制是方向性的，由接收器提供总体控制。接收者可以选择设置每个流和整个连接所需的任何窗口大小。发送方必须遵守接收方施加的流量控制限制。客户端，服务器和中介都独立地将其流控制窗口发布为接收方，并在发送时遵守其对等方设置的流控制限制。
+  
+  4. 对于新流和整个连接，流控制窗口的初始值为65,535个八位位组。
+  
+  5. 帧类型确定流控制是否适用于帧。在本文档中指定的帧中，只有`DATA`帧要进行流控制；否则，仅对`DATA`帧进行流控制。所有其他帧类型都不会占用广告流控制窗口中的空间。这确保了重要的控制帧不会被流控制阻塞。
+  
+  6. 无法禁用流控制。
+  
+  7. HTTP/2仅定义`WINDOW_UPDATE`帧的格式和语义（第6.9节）。该文件没有规定接收者如何决定何时发送该帧或它发送的值，也没有规定发送者如何选择发送分组。实现者可以选择任何适合其需求的算法。
+  
+实现还负责管理如何根据优先级发送请求和响应，选择如何避免对请求的行头阻塞以及管理新流的创建。这些算法的选择可以与任何流控制算法交互。
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+5.2.1.  Flow-Control Principles
+
+HTTP/2 stream flow control aims to allow a variety of flow-control
+algorithms to be used without requiring protocol changes.  Flow
+control in HTTP/2 has the following characteristics:
+
+1.  Flow control is specific to a connection.  Both types of flow
+    control are between the endpoints of a single hop and not over
+    the entire end-to-end path.
+
+2.  Flow control is based on WINDOW_UPDATE frames.  Receivers
+    advertise how many octets they are prepared to receive on a
+    stream and for the entire connection.  This is a credit-based
+    scheme.
+
+3.  Flow control is directional with overall control provided by the
+    receiver.  A receiver MAY choose to set any window size that it
+    desires for each stream and for the entire connection.  A sender
+    MUST respect flow-control limits imposed by a receiver.  Clients,
+    servers, and intermediaries all independently advertise their
+    flow-control window as a receiver and abide by the flow-control
+    limits set by their peer when sending.
+
+4.  The initial value for the flow-control window is 65,535 octets
+    for both new streams and the overall connection.
+
+5.  The frame type determines whether flow control applies to a
+    frame.  Of the frames specified in this document, only DATA
+    frames are subject to flow control; all other frame types do not
+    consume space in the advertised flow-control window.  This
+    ensures that important control frames are not blocked by flow
+    control.
+
+6.  Flow control cannot be disabled.
+
+7.  HTTP/2 defines only the format and semantics of the WINDOW_UPDATE
+    frame (Section 6.9).  This document does not stipulate how a
+    receiver decides when to send this frame or the value that it
+    sends, nor does it specify how a sender chooses to send packets.
+    Implementations are able to select any algorithm that suits their
+    needs.
+
+Implementations are also responsible for managing how requests and
+responses are sent based on priority, choosing how to avoid head-of-
+line blocking for requests, and managing the creation of new streams.
+Algorithm choices for these could interact with any flow-control
+algorithm.
+
+
+</code>
+</pre>
+</details>
+
+#### 5.2.2 适当使用流控制
+
+定义流控制以保护在资源约束下运行的端点。例如，代理需要在许多连接之间共享内存，并且可能具有较慢的上游连接和较快的下游连接。流控制解决了以下情况：接收器无法处理一个流上的数据，但希望继续处理同一连接中的其他流。
+
+不需要此功能的部署可以通告最大大小的流控制窗口（2^31-1），并在接收到任何数据时通过发送`WINDOW_UPDATE`帧来维护此窗口。这有效地禁用了该接收器的流控制。相反，发送方始终要遵守接收方通告的流控制窗口。
+
+资源受限（例如，内存）的部署可以采用流控制来限制对等方可以消耗的内存量。但是请注意，如果在不了解带宽延迟乘积的情况下启用了流控制，则会导致可用网络资源的最佳使用（请参阅[RFC7323]）。
+
+即使完全了解当前的带宽延迟产品，执行流控制也可能很困难。使用流控制时，接收者务必及时从TCP接收缓冲区中读取。如果未读取并执行诸如`WINDOW_UPDATE`之类的关键帧，则可能会导致死锁。
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+5.2.2.  Appropriate Use of Flow Control
+
+Flow control is defined to protect endpoints that are operating under
+resource constraints.  For example, a proxy needs to share memory
+between many connections and also might have a slow upstream
+connection and a fast downstream one.  Flow-control addresses cases
+where the receiver is unable to process data on one stream yet wants
+to continue to process other streams in the same connection.
+
+Deployments that do not require this capability can advertise a flow-
+control window of the maximum size (2^31-1) and can maintain this
+window by sending a WINDOW_UPDATE frame when any data is received.
+This effectively disables flow control for that receiver.
+Conversely, a sender is always subject to the flow-control window
+advertised by the receiver.
+
+Deployments with constrained resources (for example, memory) can
+employ flow control to limit the amount of memory a peer can consume.
+Note, however, that this can lead to suboptimal use of available
+network resources if flow control is enabled without knowledge of the
+bandwidth-delay product (see [RFC7323]).
+
+Even with full awareness of the current bandwidth-delay product,
+implementation of flow control can be difficult.  When using flow
+control, the receiver MUST read from the TCP receive buffer in a
+timely fashion.  Failure to do so could lead to a deadlock when
+critical frames, such as WINDOW_UPDATE, are not read and acted upon.
+
+</code>
+</pre>
+</details>
+
+### 5.3 流优先级
+
+客户端可以通过在打开流的`HEADERS`帧（第6.2节）中包括优先级信息来为新流分配优先级。在任何其他时间，可以使用`PRIORITY`帧（第6.3节）来更改流的优先级。
+
+优先级划分的目的是允许端点表达在管理并发流时希望其对等方分配资源的方式。最重要的是，当发送容量有限时，可以使用优先级来选择传输帧的流。
+
+可以通过将流标记为依赖于其他流的完成来对流进行优先级排序（第5.3.1节）。每个依赖项都分配了一个相对权重，该数字用于确定分配给依赖于同一流的流的可用资源的相对比例。
+
+明确设置流的优先级输入到优先级处理中。它不保证该流相对于任何其他流的任何特定处理或传输顺序。端点不能强制对等方使用优先级按特定顺序处理并发流。因此，表达优先级只是一个建议。
+
+可以从消息中省略优先级信息。在提供任何显式值之前使用默认值（第5.3.5节）。
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+5.3.  Stream Priority
+
+A client can assign a priority for a new stream by including
+prioritization information in the HEADERS frame (Section 6.2) that
+opens the stream.  At any other time, the PRIORITY frame
+(Section 6.3) can be used to change the priority of a stream.
+
+The purpose of prioritization is to allow an endpoint to express how
+it would prefer its peer to allocate resources when managing
+concurrent streams.  Most importantly, priority can be used to select
+streams for transmitting frames when there is limited capacity for
+sending.
+
+Streams can be prioritized by marking them as dependent on the
+completion of other streams (Section 5.3.1).  Each dependency is
+assigned a relative weight, a number that is used to determine the
+relative proportion of available resources that are assigned to
+streams dependent on the same stream.
+
+Explicitly setting the priority for a stream is input to a
+prioritization process.  It does not guarantee any particular
+processing or transmission order for the stream relative to any other
+stream.  An endpoint cannot force a peer to process concurrent
+streams in a particular order using priority.  Expressing priority is
+therefore only a suggestion.
+
+Prioritization information can be omitted from messages.  Defaults
+are used prior to any explicit values being provided (Section 5.3.5).
+
+</code>
+</pre>
+</details>
+
+#### 5.3.1 流依赖关系
+
+每个流都可以被赋予对另一个流的显式依赖关系，包括一个依赖关系表示优先向标识的流而不是依赖流分配资源;
+
+不依赖任何其他流的流的流依赖关系为0x0。换句话说，不存在的流0构成树的根。
+
+依赖于另一个流的流是从属流。流所依赖的流是父流。对当前不在树中的流的依赖性（例如处于`idle`状态的流）会导致该流被赋予默认优先级（第5.3.5节）。
+
+在分配对另一个流的依赖性时，该流为作为父流的新依赖项添加。共享同一父对象的从属流不会相对于彼此排序。例如，如果流B和C依赖于流A，并且如果创建的流D依赖于流A，则这将导致A的依赖顺序，然后是B，C和D的任何顺序。
+
+```
+
+       A                 A
+      / \      ==>      /|\
+     B   C             B D C
+
+Figure 3: Example of Default Dependency Creation
+
+```
+
+排他标志允许插入新级别的依赖关系。独占标志导致流成为其父流的唯一依赖项，从而导致其他依赖项变为依赖于独占流。在前面的示例中，如果创建的流D具有对流A的排他性依赖关系，则结果D将成为B和C的依赖关系父级。
+
+```
+                         A
+       A                 |
+      / \      ==>       D
+     B   C              / \
+                       B   C
+
+Figure 4: Example of Exclusive Dependency Creation
+```
+
+在依赖关系树内部，从属流仅应在其所依赖的所有流（父流链最高为0x0）关闭或无法在其上取得进展时才分配资源。
+
+流不能依靠自己。端点必须将此视为`PROTOCOL_ERROR`类型的流错误（5.4.2节）。
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+5.3.1.  Stream Dependencies
+
+   Each stream can be given an explicit dependency on another stream.
+   Including a dependency expresses a preference to allocate resources
+   to the identified stream rather than to the dependent stream.
+
+   A stream that is not dependent on any other stream is given a stream
+   dependency of 0x0.  In other words, the non-existent stream 0 forms
+   the root of the tree.
+
+   A stream that depends on another stream is a dependent stream.  The
+   stream upon which a stream is dependent is a parent stream.  A
+   dependency on a stream that is not currently in the tree -- such as a
+   stream in the "idle" state -- results in that stream being given a
+   default priority (Section 5.3.5).
+
+   When assigning a dependency on another stream, the stream is added as
+   a new dependency of the parent stream.  Dependent streams that share
+   the same parent are not ordered with respect to each other.  For
+   example, if streams B and C are dependent on stream A, and if stream
+   D is created with a dependency on stream A, this results in a
+   dependency order of A followed by B, C, and D in any order.
+
+       A                 A
+      / \      ==>      /|\
+     B   C             B D C
+
+             Figure 3: Example of Default Dependency Creation
+
+   An exclusive flag allows for the insertion of a new level of
+   dependencies.  The exclusive flag causes the stream to become the
+   sole dependency of its parent stream, causing other dependencies to
+   become dependent on the exclusive stream.  In the previous example,
+   if stream D is created with an exclusive dependency on stream A, this
+   results in D becoming the dependency parent of B and C.
+
+                         A
+       A                 |
+      / \      ==>       D
+     B   C              / \
+                       B   C
+
+            Figure 4: Example of Exclusive Dependency Creation
+
+   Inside the dependency tree, a dependent stream SHOULD only be
+   allocated resources if either all of the streams that it depends on
+   (the chain of parent streams up to 0x0) are closed or it is not
+   possible to make progress on them.
+
+   A stream cannot depend on itself.  An endpoint MUST treat this as a
+   stream error (Section 5.4.2) of type PROTOCOL_ERROR.
+
+</code>
+</pre>
+</details>
+
+#### 5.3.2 依赖权重
+
+所有依赖流都被分配1到256（含）之间的整数权重。
+
+具有相同父流的流应根据其权重按比例分配资源。因此，如果流B依赖权重为4的流A，流C依赖权重为12的流A，并且流A上无法进行任何处理，则流B理想地接收分配给流C的资源的三分之一。
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+5.3.2.  Dependency Weighting
+
+   All dependent streams are allocated an integer weight between 1 and
+   256 (inclusive).
+
+   Streams with the same parent SHOULD be allocated resources
+   proportionally based on their weight.  Thus, if stream B depends on
+   stream A with weight 4, stream C depends on stream A with weight 12,
+   and no progress can be made on stream A, stream B ideally receives
+   one-third of the resources allocated to stream C.
+
+</code>
+</pre>
+</details>
+
+#### 5.3.3 重新排序
+
+流优先级使用`PRIORITY`帧进行更改。设置独立性会导致流变得依赖于已标识的父流。
+
+如果父级被重新初始化，则从属流将与其父级流一起移动。为排定优先级的流设置具有独占标志的依赖关系会导致新的父流的所有依赖关系都变为已排定优先级的流。
+
+如果使流依赖于其自己的依赖关系之一，则首先移动以前依赖的流以使其依赖于优先流的先前父对象。移动的依赖项保持其权重。
+
+例如，考虑原始的依赖关系树，其中B和C依赖于A，D和E依赖于C，F依赖于D.如果使A依赖于D，则D代替A.全部其他依赖关系保持不变，但F除外，如果重新优先级排他，则F依赖于A。
+
+```
+       x                x                x                 x
+       |               / \               |                 |
+       A              D   A              D                 D
+      / \            /   / \            / \                |
+     B   C     ==>  F   B   C   ==>    F   A       OR      A
+        / \                 |             / \             /|\
+       D   E                E            B   C           B C F
+       |                                     |             |
+       F                                     E             E
+                  (intermediate)   (non-exclusive)    (exclusive)
+
+                Figure 5: Example of Dependency Reordering
+```
+
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+5.3.3.  Reprioritization
+
+   Stream priorities are changed using the PRIORITY frame.  Setting a
+   dependency causes a stream to become dependent on the identified
+   parent stream.
+
+   Dependent streams move with their parent stream if the parent is
+   reprioritized.  Setting a dependency with the exclusive flag for a
+   reprioritized stream causes all the dependencies of the new parent
+   stream to become dependent on the reprioritized stream.
+
+   If a stream is made dependent on one of its own dependencies, the
+   formerly dependent stream is first moved to be dependent on the
+   reprioritized stream's previous parent.  The moved dependency retains
+   its weight.
+
+   For example, consider an original dependency tree where B and C
+   depend on A, D and E depend on C, and F depends on D.  If A is made
+   dependent on D, then D takes the place of A.  All other dependency
+   relationships stay the same, except for F, which becomes dependent on
+   A if the reprioritization is exclusive.
+
+       x                x                x                 x
+       |               / \               |                 |
+       A              D   A              D                 D
+      / \            /   / \            / \                |
+     B   C     ==>  F   B   C   ==>    F   A       OR      A
+        / \                 |             / \             /|\
+       D   E                E            B   C           B C F
+       |                                     |             |
+       F                                     E             E
+                  (intermediate)   (non-exclusive)    (exclusive)
+
+                Figure 5: Example of Dependency Reordering
+
+</code>
+</pre>
+</details>
+
+#### 5.3.4 优先级状态管理
+
+当从依赖关系树中删除流时，可以将其依赖关系移动为依赖于封闭流的父级。通过根据封闭流的权重按比例分配封闭流的依赖关系权重，可以重新计算新依赖关系的权重。
+
+从依赖关系树中删除的流会导致某些优先级信息丢失。资源在具有相同父流的流之间共享，这意味着如果该流中的某个流关闭或被阻塞，则分配给该流的任何备用容量都将分配给该流的直接邻居。但是，如果从树中删除了公共依赖项，则这些流与下一个最高级别的流共享资源。
+
+例如，假设流A和B共享父级，而流C和D都依赖流A。在删除流A之前，如果流A和D无法进行，则流C接收所有专用于流A的资源。如果从树中删除了流A，则流A的权重将在流C和D之间分配。如果流D仍然无法进行，则导致流C接收减少了资源。对于相等的起始权重，C接收的是可用资源的三分之一而不是一半。
+
+如果在依赖项中标识的流没有关联的优先级信息，则在依赖该优先级的信息正在传输时，该流可能会关闭。 然后为依存流分配默认优先级（第5.3.5节）。由于可能会给流一个与预期的优先级不同的优先级，因此可能会产生次优的优先级。
+
+为避免这些问题，端点应在流关闭后的一段时间内保留流优先级状态。状态保留的时间越长，分配区域的流分配不正确或默认优先级值的机会就越少。
+
+类似地，处于`idle`状态的流可以被分配优先级或成为其他流的父级。这允许在依赖关系树中创建分组节点，从而实现更灵活的优先级表达。空闲流以默认优先级开头（第5.3.5节）。
+
+对于未计入`SETTINGS_MAX_CONCURRENT_STREAMS`设置的限制的流，优先级信息的保留可能会给端点造成很大的状态负担。因此，保留的优先级状态数量可能会受到限制。
+
+端点为优先级保留的其他状态数量可能取决于负载；在高负载下，可以丢弃优先级状态以限制资源承诺。在极端情况下，端点甚至可以丢弃活动或保留流的优先级状态。如果应用了限制，则端点SHOULD至少应保持其`SETTINGS_MAX_CONCURRENT_STREAMS`设置所允许的流数量。实施还应尝试为优先级树中处于活动状态的流保留状态。
+
+如果保留的状态足以保留该状态，则接收`PRIORITY`帧的端点将更改关闭流的优先级，应改变依赖于此流的流的依赖关系。
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+5.3.4.  Prioritization State Management
+
+   When a stream is removed from the dependency tree, its dependencies
+   can be moved to become dependent on the parent of the closed stream.
+   The weights of new dependencies are recalculated by distributing the
+   weight of the dependency of the closed stream proportionally based on
+   the weights of its dependencies.
+
+   Streams that are removed from the dependency tree cause some
+   prioritization information to be lost.  Resources are shared between
+   streams with the same parent stream, which means that if a stream in
+   that set closes or becomes blocked, any spare capacity allocated to a
+   stream is distributed to the immediate neighbors of the stream.
+   However, if the common dependency is removed from the tree, those
+   streams share resources with streams at the next highest level.
+
+   For example, assume streams A and B share a parent, and streams C and
+   D both depend on stream A.  Prior to the removal of stream A, if
+   streams A and D are unable to proceed, then stream C receives all the
+   resources dedicated to stream A.  If stream A is removed from the
+   tree, the weight of stream A is divided between streams C and D.  If
+   stream D is still unable to proceed, this results in stream C
+   receiving a reduced proportion of resources.  For equal starting
+   weights, C receives one third, rather than one half, of available
+   resources.
+
+   It is possible for a stream to become closed while prioritization
+   information that creates a dependency on that stream is in transit.
+   If a stream identified in a dependency has no associated priority
+   information, then the dependent stream is instead assigned a default
+   priority (Section 5.3.5).  This potentially creates suboptimal
+   prioritization, since the stream could be given a priority that is
+   different from what is intended.
+
+   To avoid these problems, an endpoint SHOULD retain stream
+   prioritization state for a period after streams become closed.  The
+   longer state is retained, the lower the chance that streams are
+   assigned incorrect or default priority values.
+
+   Similarly, streams that are in the "idle" state can be assigned
+   priority or become a parent of other streams.  This allows for the
+   creation of a grouping node in the dependency tree, which enables
+   more flexible expressions of priority.  Idle streams begin with a
+   default priority (Section 5.3.5).
+
+   The retention of priority information for streams that are not
+   counted toward the limit set by SETTINGS_MAX_CONCURRENT_STREAMS could
+   create a large state burden for an endpoint.  Therefore, the amount
+   of prioritization state that is retained MAY be limited.
+
+   The amount of additional state an endpoint maintains for
+   prioritization could be dependent on load; under high load,
+   prioritization state can be discarded to limit resource commitments.
+   In extreme cases, an endpoint could even discard prioritization state
+   for active or reserved streams.  If a limit is applied, endpoints
+   SHOULD maintain state for at least as many streams as allowed by
+   their setting for SETTINGS_MAX_CONCURRENT_STREAMS.  Implementations
+   SHOULD also attempt to retain state for streams that are in active
+   use in the priority tree.
+
+   If it has retained enough state to do so, an endpoint receiving a
+   PRIORITY frame that changes the priority of a closed stream SHOULD
+   alter the dependencies of the streams that depend on it.
+
+</code>
+</pre>
+</details>
+
+#### 5.3.5 默认优先级
+
+最初为所有流分配了对流0x0的非排他性依赖关系。推送的流（第8.2节）最初取决于它们的关联流。在这两种情况下，流均被分配默认权重16。
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+5.3.5.  Default Priorities
+
+   All streams are initially assigned a non-exclusive dependency on
+   stream 0x0.  Pushed streams (Section 8.2) initially depend on their
+   associated stream.  In both cases, streams are assigned a default
+   weight of 16.
+
+</code>
+</pre>
+</details>
+
+### 5.4 错误处理
+
+HTTP/2帧允许两种错误：
+
+- 使整个连接不可用的错误条件是连接错误。
+- 单个流中的错误是流错误。
+
+第7节中包含错误代码列表。
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+5.4.  Error Handling
+
+   HTTP/2 framing permits two classes of error:
+
+   o  An error condition that renders the entire connection unusable is
+      a connection error.
+
+   o  An error in an individual stream is a stream error.
+
+   A list of error codes is included in Section 7.
+
+</code>
+</pre>
+</details>
+
+#### 5.4.1 连接错误处理
+
+连接错误是指阻止帧层进一步处理或破坏任何连接状态的任何错误。
+
+遇到连接错误的端点应首先发送一个`GOAWAY`帧（第6.8节），该帧带有从其成功接收到的最后一个流的流标识符同行。 `GOAWAY`帧包含一个错误代码，该错误代码指示为什么会终止连接。发送出现错误情况的`GOAWAY`帧后，端点必须关闭TCP连接。
+
+接收端点可能无法可靠地接收`GOAWAY`（[RFC7230]，第6.6节描述了立即连接关闭如何导致数据丢失）。如果发生连接错误，`GOAWAY`只提供尽力尝试与对等方进行通信，说明终止连接的原因。
+
+端点可以随时终止连接。特别是，端点可以选择将流错误视为连接错误。端点应在结束连接时发送`GOAWAY`帧，前提是情况允许。
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+5.4.1.  Connection Error Handling
+
+   A connection error is any error that prevents further processing of
+   the frame layer or corrupts any connection state.
+
+   An endpoint that encounters a connection error SHOULD first send a
+   GOAWAY frame (Section 6.8) with the stream identifier of the last
+   stream that it successfully received from its peer.  The GOAWAY frame
+   includes an error code that indicates why the connection is
+   terminating.  After sending the GOAWAY frame for an error condition,
+   the endpoint MUST close the TCP connection.
+
+   It is possible that the GOAWAY will not be reliably received by the
+   receiving endpoint ([RFC7230], Section 6.6 describes how an immediate
+   connection close can result in data loss).  In the event of a
+   connection error, GOAWAY only provides a best-effort attempt to
+   communicate with the peer about why the connection is being
+   terminated.
+
+   An endpoint can end a connection at any time.  In particular, an
+   endpoint MAY choose to treat a stream error as a connection error.
+   Endpoints SHOULD send a GOAWAY frame when ending a connection,
+   providing that circumstances permit it.
+
+</code>
+</pre>
+</details>
+
+#### 5.4.2 流错误处理
+
+流错误是与不影响其他流处理的特定流相关的错误。
+
+检测到流错误的端点发送`RST_STREAM`帧（第6.4节），该帧包含发生错误的流的流标识符。 `RST_STREAM`帧包含指示错误类型的错误代码。
+
+`RST_STREAM`是端点可以在流上发送的最后一个帧。发送RST_STREAM帧的对等端必须准备好接收任何已发送或排队等待发送的帧。这些帧可以被忽略，除非它们修改了连接状态（例如为报头压缩（第4.3节）或流控制而维护的状态）。
+
+通常，端点不应为任何流发送多个`RST_STREAM`帧。但是，如果端点在超过行程时间之后收到封闭流上的帧，则端点可以发送其他`RST_STREAM`帧。允许这种行为处理行为错误的实现。
+
+为避免循环，端点不得发送`RST_STREAM`来响应`RST_STREAM`帧。
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+5.4.2.  Stream Error Handling
+
+   A stream error is an error related to a specific stream that does not
+   affect processing of other streams.
+
+   An endpoint that detects a stream error sends a RST_STREAM frame
+   (Section 6.4) that contains the stream identifier of the stream where
+   the error occurred.  The RST_STREAM frame includes an error code that
+   indicates the type of error.
+
+   A RST_STREAM is the last frame that an endpoint can send on a stream.
+   The peer that sends the RST_STREAM frame MUST be prepared to receive
+   any frames that were sent or enqueued for sending by the remote peer.
+   These frames can be ignored, except where they modify connection
+   state (such as the state maintained for header compression
+   (Section 4.3) or flow control).
+
+   Normally, an endpoint SHOULD NOT send more than one RST_STREAM frame
+   for any stream.  However, an endpoint MAY send additional RST_STREAM
+   frames if it receives frames on a closed stream after more than a
+   round-trip time.  This behavior is permitted to deal with misbehaving
+   implementations.
+
+   To avoid looping, an endpoint MUST NOT send a RST_STREAM in response
+   to a RST_STREAM frame.
+
+</code>
+</pre>
+</details>
+
+#### 5.4.3 连接终止
+
+如果在流保持`open`或`half-closed`状态的同时关闭或重置TCP连接，则无法自动重试受影响的流（有关详细信息，请参阅第8.1.4节）。
+
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+5.4.3.  Connection Termination
+
+   If the TCP connection is closed or reset while streams remain in
+   "open" or "half-closed" state, then the affected streams cannot be
+   automatically retried (see Section 8.1.4 for details).
+
+</code>
+</pre>
+</details>
+
+### 5.5 扩展HTTP/2
+
+HTTP/2允许扩展协议。在本节描述的限制内，协议扩展可用于提供其他服务或更改协议的任何方面。扩展仅在单个HTTP/2连接的范围内有效。
+
+这适用于本文档中定义的协议元素。这不会影响扩展HTTP的现有选项，例如定义新方法，状态代码或标头字段。
+
+扩展名允许使用新的帧类型（第4.1节），新设置（第6.5.2节）或新的错误代码（第7节）。建立用于管理这些扩展点的注册表：帧类型（第11.2节），设置（第11.3节）和错误代码（第11.4节）。
+
+实现必须忽略所有可扩展协议元素中未知或不受支持的值。实现必须丢弃类型未知或不受支持的帧。这意味着这些扩展点中的任何一个都可以被扩展安全地使用，而无需事先安排或协商。但是，不允许出现在标头块中间的扩展帧（第4.3节）。这些必须被视为`PROTOCOL_ERROR`类型的连接错误（第5.4.1节）。
+
+可能会更改现有协议组件语义的扩展必须在使用前进行协商。例如，无法更改`HEADERS`帧布局的扩展名，直到对等端发出肯定的信号表明可以接受为止。在这种情况下，可能还需要在建议的布局生效时进行协调。请注意，将除`DATA`帧以外的任何帧视为流控制是这种语义变化，只能通过协商来完成。
+
+本文档未强制要求使用扩展名进行协商的特定方法，但请注意设置（第6.5.2节）可以用于该目的。如果两个对等方都设置了表示愿意使用该扩展名的值，则可以使用该扩展名。
+
+如果将设置用于扩展协商，则必须以初始禁用扩展的方式定义初始值。
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+5.5.  Extending HTTP/2
+
+   HTTP/2 permits extension of the protocol.  Within the limitations
+   described in this section, protocol extensions can be used to provide
+   additional services or alter any aspect of the protocol.  Extensions
+   are effective only within the scope of a single HTTP/2 connection.
+
+   This applies to the protocol elements defined in this document.  This
+   does not affect the existing options for extending HTTP, such as
+   defining new methods, status codes, or header fields.
+
+   Extensions are permitted to use new frame types (Section 4.1), new
+   settings (Section 6.5.2), or new error codes (Section 7).  Registries
+   are established for managing these extension points: frame types
+   (Section 11.2), settings (Section 11.3), and error codes
+   (Section 11.4).
+
+   Implementations MUST ignore unknown or unsupported values in all
+   extensible protocol elements.  Implementations MUST discard frames
+   that have unknown or unsupported types.  This means that any of these
+   extension points can be safely used by extensions without prior
+   arrangement or negotiation.  However, extension frames that appear in
+   the middle of a header block (Section 4.3) are not permitted; these
+   MUST be treated as a connection error (Section 5.4.1) of type
+   PROTOCOL_ERROR.
+
+   Extensions that could change the semantics of existing protocol
+   components MUST be negotiated before being used.  For example, an
+   extension that changes the layout of the HEADERS frame cannot be used
+   until the peer has given a positive signal that this is acceptable.
+   In this case, it could also be necessary to coordinate when the
+   revised layout comes into effect.  Note that treating any frames
+   other than DATA frames as flow controlled is such a change in
+   semantics and can only be done through negotiation.
+
+   This document doesn't mandate a specific method for negotiating the
+   use of an extension but notes that a setting (Section 6.5.2) could be
+   used for that purpose.  If both peers set a value that indicates
+   willingness to use the extension, then the extension can be used.  If
+
+   a setting is used for extension negotiation, the initial value MUST
+   be defined in such a fashion that the extension is initially
+   disabled.
 
 </code>
 </pre>

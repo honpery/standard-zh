@@ -2395,3 +2395,3333 @@ HTTP/2允许扩展协议。在本节描述的限制内，协议扩展可用于�
 </code>
 </pre>
 </details>
+
+## 6. 帧定义
+
+本规范定义了许多帧类型，每种类型均由唯一的8位类型代码标识。每种帧类型在整个连接或单个流的建立和管理中都有不同的用途。
+
+特定帧类型的传输可以更改连接的状态。如果端点无法维持连接状态的同步视图，则将无法再成功进行连接内的通信。因此，重要的一点是，端点必须对状态如何受到给定帧的使用产生共同的理解。
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+6.  Frame Definitions
+
+   This specification defines a number of frame types, each identified
+   by a unique 8-bit type code.  Each frame type serves a distinct
+   purpose in the establishment and management either of the connection
+   as a whole or of individual streams.
+
+   The transmission of specific frame types can alter the state of a
+   connection.  If endpoints fail to maintain a synchronized view of the
+   connection state, successful communication within the connection will
+   no longer be possible.  Therefore, it is important that endpoints
+   have a shared comprehension of how the state is affected by the use
+   any given frame.
+
+</code>
+</pre>
+</details>
+
+### 6.1 DATA
+
+DATA帧（类型=0x0）传达与流相关的任意可变长度的八位字节序列。例如，一个或多个DATA帧用于承载HTTP请求或响应有效负载。
+
+DATA帧还可以包含填充。可以将填充添加到DATA帧中以掩盖消息的大小。填充是一种安全功能；参见10.7节。
+
+```
+    +---------------+
+    |Pad Length? (8)|
+    +---------------+-----------------------------------------------+
+    |                            Data (*)                         ...
+    +---------------------------------------------------------------+
+    |                           Padding (*)                       ...
+    +---------------------------------------------------------------+
+
+                       Figure 6: DATA Frame Payload
+```
+
+DATA帧包含以下字段：
+
+  - 填充长度(Pad Length)：8位字段，包含以八位字节为单位的帧填充的长度。该字段是有条件的（在图中用`?`表示），仅当设置了`PADDED`标志时才存在。
+  - 数据(Data)：应用程序数据。数据量是减去存在的其他字段的长度后剩余的帧有效负载。
+  - 填充(Padding)：不包含应用程序语义值的填充八位字节。发送时，填充八位字节必须设置为零。接收者没有义务验证填充，但是可以将非零填充视为`PROTOCOL_ERROR`类型的连接错误（第5.4.1节）。
+
+DATA帧定义以下标志：
+
+  - END_STREAM (0x1): 置位时，位0指示该帧是端点将向所标识的流发送的最后一个帧。设置该标志会使流进入`half-closed`或`closed`状态（第5.1节）- PADDED (0x8): 设置后，位3指示“填充长度”字段及其描述的任何填充都存在。
+
+DATA帧必须与流关联。如果接收到一个其流标识符字段为0x0的DATA帧，则接收者必须以`PROTOCOL_ERROR`类型的连接错误（第5.4.1节）进行响应。
+
+数据帧受流量控制，并且仅在流处于`open`或`half-closed (remote)`状态时才能发送。整个DATA帧有效负载都包含在流控制中，包括`Pad Length`和`Padding`字段（如果存在）。如果接收到的DATA帧的流不处于`open`或`half-closed (local)`状态，则接收方务必以`STREAM_CLOSED`类型的流错误（第5.4.2节）做出响应。
+
+填充字节的总数由`Pad Length`字段的值确定。如果填充的长度是帧有效载荷的长度或更大，则接收者必须将此视为`PROTOCOL_ERROR`类型的连接错误（5.4.1节）。
+
+  注意：通过包含值为零的`Pad Length`字段，可以将帧的大小增加一个八位位组。
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+6.1.  DATA
+
+   DATA frames (type=0x0) convey arbitrary, variable-length sequences of
+   octets associated with a stream.  One or more DATA frames are used,
+   for instance, to carry HTTP request or response payloads.
+
+   DATA frames MAY also contain padding.  Padding can be added to DATA
+   frames to obscure the size of messages.  Padding is a security
+   feature; see Section 10.7.
+
+    +---------------+
+    |Pad Length? (8)|
+    +---------------+-----------------------------------------------+
+    |                            Data (*)                         ...
+    +---------------------------------------------------------------+
+    |                           Padding (*)                       ...
+    +---------------------------------------------------------------+
+
+                       Figure 6: DATA Frame Payload
+
+   The DATA frame contains the following fields:
+
+   Pad Length:  An 8-bit field containing the length of the frame
+      padding in units of octets.  This field is conditional (as
+      signified by a "?" in the diagram) and is only present if the
+      PADDED flag is set.
+
+   Data:  Application data.  The amount of data is the remainder of the
+      frame payload after subtracting the length of the other fields
+      that are present.
+
+   Padding:  Padding octets that contain no application semantic value.
+      Padding octets MUST be set to zero when sending.  A receiver is
+      not obligated to verify padding but MAY treat non-zero padding as
+      a connection error (Section 5.4.1) of type PROTOCOL_ERROR.
+
+   The DATA frame defines the following flags:
+
+   END_STREAM (0x1):  When set, bit 0 indicates that this frame is the
+      last that the endpoint will send for the identified stream.
+      Setting this flag causes the stream to enter one of the "half-
+      closed" states or the "closed" state (Section 5.1).
+
+   PADDED (0x8):  When set, bit 3 indicates that the Pad Length field
+      and any padding that it describes are present.
+
+   DATA frames MUST be associated with a stream.  If a DATA frame is
+   received whose stream identifier field is 0x0, the recipient MUST
+   respond with a connection error (Section 5.4.1) of type
+   PROTOCOL_ERROR.
+
+   DATA frames are subject to flow control and can only be sent when a
+   stream is in the "open" or "half-closed (remote)" state.  The entire
+   DATA frame payload is included in flow control, including the Pad
+   Length and Padding fields if present.  If a DATA frame is received
+   whose stream is not in "open" or "half-closed (local)" state, the
+   recipient MUST respond with a stream error (Section 5.4.2) of type
+   STREAM_CLOSED.
+
+   The total number of padding octets is determined by the value of the
+   Pad Length field.  If the length of the padding is the length of the
+   frame payload or greater, the recipient MUST treat this as a
+   connection error (Section 5.4.1) of type PROTOCOL_ERROR.
+
+      Note: A frame can be increased in size by one octet by including a
+      Pad Length field with a value of zero.
+
+</code>
+</pre>
+</details>
+
+### 6.2 HEADERS
+
+HEADERS帧（类型=0x1）用于打开流（第5.1节），并附加一个header块片段。可以在`idle`、`reserved(local)`、`open`或`half-closed(remot)`状态下在流上发送HEADERS帧。
+
+```
+    +---------------+
+    |Pad Length? (8)|
+    +-+-------------+-----------------------------------------------+
+    |E|                 Stream Dependency? (31)                     |
+    +-+-------------+-----------------------------------------------+
+    |  Weight? (8)  |
+    +-+-------------+-----------------------------------------------+
+    |                   Header Block Fragment (*)                 ...
+    +---------------------------------------------------------------+
+    |                           Padding (*)                       ...
+    +---------------------------------------------------------------+
+
+                      Figure 7: HEADERS Frame Payload
+```
+
+HEADERS帧有效载荷具有以下字段：
+
+  - Pad Length：一个8位字段，包含以八位字节为单位的帧填充长度。仅当设置了`PADDED`标志时，此字段才存在。
+  - E：一位标志，指示流依赖性是排他性的（请参阅第5.3节）。仅当设置了`PRIORITY`标志时，此字段才存在。
+  - Stream Dependency：此流所依赖的流的31位流标识符（请参阅第5.3节）。仅当设置了`PRIORITY`标志时，此字段才存在。
+  - Weight：表示流优先级权重的无符号8位整数（请参阅第5.3节）。将值加1以获得介于1和256之间的权重。仅当设置了`PRIORITY`标志时，才显示此字段。
+  - Header Block Fragment：标头块片段（第4.3节）。
+  - Padding：填充八位字节。 
+
+HEADERS帧定义以下标志：
+  - END_STREAM（0x1）：设置后，位0指示标头块（第4.3节）是端点将向标识流发送的最后一个块。 
+    HEADERS帧带有`END_STREAM`标志，该标志指示流的结尾。但是，设置了`END_STREAM`标志的HEADERS帧之后可以是同一流上的CONTINUATION帧。从逻辑上讲，CONTINUATION帧是HEADERS帧的一部分。
+  - END_HEADERS（0x4）：置位时，位2指示该帧包含整个标题块（第4.3节），并且之后没有任何CONTINUATION帧。
+    没有设置`END_HEADERS`标志的HEADERS帧之后必须是同一流的CONTINUATION帧。接收者必须将接收到的任何其他类型的帧或不同流上的帧视为`PROTOCOL_ERROR`类型的连接错误（第5.4.1节）
+  - PADDED（0x8）：置位时，第3位指示`Pad Length`字段以及任何存在它描述的填充。
+  - PRIORITY（0x20）：置位时，位5表示存在独占标志（E），流相关性和权重字段；参见第5.3节。 
+  
+HEADERS帧的有效载荷包含一个头块片段（第4.3节）。不适合HEADERS框架的标题块在CONTINUATION框架中继续（第6.10节）。
+
+HEADERS帧必须与流关联。如果收到的HEADERS帧的流标识符字段为0x0，则接收者务必以`PROTOCOL_ERROR`类型的连接错误（第5.4.1节）进行响应。 
+
+HEADERS帧如第4.3节所述更改连接状态。 
+
+HEADERS框架可以包含填充。填充字段和标志与为DATA帧定义的填充字段和标志相同（第6.1节）。超出标题块片段剩余大小的填充必须被视为`PROTOCOL_ERROR`。
+
+HEADERS帧中的优先级信息在逻辑上等效于单独的PRIORITY帧，但是包含在HEADERS中避免了在创建新流时流优先级流失的可能性。在第一个流之后的HEADERS帧中的优先级字段将对流进行优先级排序（第5.3.3节）。
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+6.2.  HEADERS
+
+   The HEADERS frame (type=0x1) is used to open a stream (Section 5.1),
+   and additionally carries a header block fragment.  HEADERS frames can
+   be sent on a stream in the "idle", "reserved (local)", "open", or
+   "half-closed (remote)" state.
+
+    +---------------+
+    |Pad Length? (8)|
+    +-+-------------+-----------------------------------------------+
+    |E|                 Stream Dependency? (31)                     |
+    +-+-------------+-----------------------------------------------+
+    |  Weight? (8)  |
+    +-+-------------+-----------------------------------------------+
+    |                   Header Block Fragment (*)                 ...
+    +---------------------------------------------------------------+
+    |                           Padding (*)                       ...
+    +---------------------------------------------------------------+
+
+                      Figure 7: HEADERS Frame Payload
+
+   The HEADERS frame payload has the following fields:
+
+   Pad Length:  An 8-bit field containing the length of the frame
+      padding in units of octets.  This field is only present if the
+      PADDED flag is set.
+
+   E: A single-bit flag indicating that the stream dependency is
+      exclusive (see Section 5.3).  This field is only present if the
+      PRIORITY flag is set.
+
+   Stream Dependency:  A 31-bit stream identifier for the stream that
+      this stream depends on (see Section 5.3).  This field is only
+      present if the PRIORITY flag is set.
+
+   Weight:  An unsigned 8-bit integer representing a priority weight for
+      the stream (see Section 5.3).  Add one to the value to obtain a
+      weight between 1 and 256.  This field is only present if the
+      PRIORITY flag is set.
+
+   Header Block Fragment:  A header block fragment (Section 4.3).
+
+   Padding:  Padding octets.
+
+   The HEADERS frame defines the following flags:
+
+   END_STREAM (0x1):  When set, bit 0 indicates that the header block
+      (Section 4.3) is the last that the endpoint will send for the
+      identified stream.
+
+      A HEADERS frame carries the END_STREAM flag that signals the end
+      of a stream.  However, a HEADERS frame with the END_STREAM flag
+      set can be followed by CONTINUATION frames on the same stream.
+      Logically, the CONTINUATION frames are part of the HEADERS frame.
+
+   END_HEADERS (0x4):  When set, bit 2 indicates that this frame
+      contains an entire header block (Section 4.3) and is not followed
+      by any CONTINUATION frames.
+
+      A HEADERS frame without the END_HEADERS flag set MUST be followed
+      by a CONTINUATION frame for the same stream.  A receiver MUST
+      treat the receipt of any other type of frame or a frame on a
+      different stream as a connection error (Section 5.4.1) of type
+      PROTOCOL_ERROR.
+
+   PADDED (0x8):  When set, bit 3 indicates that the Pad Length field
+      and any padding that it describes are present.
+
+   PRIORITY (0x20):  When set, bit 5 indicates that the Exclusive Flag
+      (E), Stream Dependency, and Weight fields are present; see
+      Section 5.3.
+
+   The payload of a HEADERS frame contains a header block fragment
+   (Section 4.3).  A header block that does not fit within a HEADERS
+   frame is continued in a CONTINUATION frame (Section 6.10).
+
+   HEADERS frames MUST be associated with a stream.  If a HEADERS frame
+   is received whose stream identifier field is 0x0, the recipient MUST
+   respond with a connection error (Section 5.4.1) of type
+   PROTOCOL_ERROR.
+
+   The HEADERS frame changes the connection state as described in
+   Section 4.3.
+
+   The HEADERS frame can include padding.  Padding fields and flags are
+   identical to those defined for DATA frames (Section 6.1).  Padding
+   that exceeds the size remaining for the header block fragment MUST be
+   treated as a PROTOCOL_ERROR.
+
+   Prioritization information in a HEADERS frame is logically equivalent
+   to a separate PRIORITY frame, but inclusion in HEADERS avoids the
+   potential for churn in stream prioritization when new streams are
+   created.  Prioritization fields in HEADERS frames subsequent to the
+   first on a stream reprioritize the stream (Section 5.3.3).
+
+</code>
+</pre>
+</details>
+
+### 6.3 PRIORITY
+
+PRIORITY帧（类型=0x2）指定发送方建议的流优先级（第5.3节）。它可以以任何流状态发送，包括`idle`或`closed`的流。
+
+```
+    +-+-------------------------------------------------------------+
+    |E|                  Stream Dependency (31)                     |
+    +-+-------------+-----------------------------------------------+
+    |   Weight (8)  |
+    +-+-------------+
+
+                     Figure 8: PRIORITY Frame Payload
+
+```
+
+PRIORITY帧的有效负载包含以下字段：
+
+  - E：一位标志，指示流依赖性是非排他性的（请参阅第5.3节）。
+  - Stream Dependency: 此流所依赖的流的31位流标识符（请参阅第5.3节）。
+  - Weight: 表示流优先级权重的无符号8位整数（请参阅第5.3节）。将值加1可获得1到256之间的权重。
+
+PRIORITY帧未定义任何标志。 
+
+PRIORITY帧始终标识流。如果收到一个流标识符为0x0的PRIORITY帧，则接收者务必以`PROTOCOL_ERROR`类型的连接错误（第5.4.1节）进行响应。
+
+尽管不能在包含单头块的连续帧之间发送PRIORITY帧，但它可以在任何状态下在流上发送（第4.3节）。请注意，该帧可能在处理后或到达帧发送完成后到达，这将导致它对标识的流没有影响。对于处于`half-closed(remote)`或`closed`状态的流，此帧只能影响所标识的流及其从属流的处理；它不会影响该流上的帧传输。
+
+可以为处于`idle`或`closed`状态的流发送优先级帧。这允许通过更改未使用或关闭的父流的优先级来重新设置一组依赖流的优先级。
+
+长度非5个八位位组的PRIORITY帧必须被视为`FRAME_SIZE_ERROR`类型的流错误（第5.4.2节）。
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+6.3.  PRIORITY
+
+   The PRIORITY frame (type=0x2) specifies the sender-advised priority
+   of a stream (Section 5.3).  It can be sent in any stream state,
+   including idle or closed streams.
+
+    +-+-------------------------------------------------------------+
+    |E|                  Stream Dependency (31)                     |
+    +-+-------------+-----------------------------------------------+
+    |   Weight (8)  |
+    +-+-------------+
+
+                     Figure 8: PRIORITY Frame Payload
+
+   The payload of a PRIORITY frame contains the following fields:
+
+   E: A single-bit flag indicating that the stream dependency is
+      exclusive (see Section 5.3).
+
+   Stream Dependency:  A 31-bit stream identifier for the stream that
+      this stream depends on (see Section 5.3).
+
+   Weight:  An unsigned 8-bit integer representing a priority weight for
+      the stream (see Section 5.3).  Add one to the value to obtain a
+      weight between 1 and 256.
+
+   The PRIORITY frame does not define any flags.
+
+   The PRIORITY frame always identifies a stream.  If a PRIORITY frame
+   is received with a stream identifier of 0x0, the recipient MUST
+   respond with a connection error (Section 5.4.1) of type
+   PROTOCOL_ERROR.
+
+   The PRIORITY frame can be sent on a stream in any state, though it
+   cannot be sent between consecutive frames that comprise a single
+   header block (Section 4.3).  Note that this frame could arrive after
+   processing or frame sending has completed, which would cause it to
+   have no effect on the identified stream.  For a stream that is in the
+   "half-closed (remote)" or "closed" state, this frame can only affect
+   processing of the identified stream and its dependent streams; it
+   does not affect frame transmission on that stream.
+
+   The PRIORITY frame can be sent for a stream in the "idle" or "closed"
+   state.  This allows for the reprioritization of a group of dependent
+   streams by altering the priority of an unused or closed parent
+   stream.
+
+   A PRIORITY frame with a length other than 5 octets MUST be treated as
+   a stream error (Section 5.4.2) of type FRAME_SIZE_ERROR.
+
+</code>
+</pre>
+</details>
+
+### 6.4 RST_STREAM
+
+RST_STREAM帧（类型=0x3）允许立即终止流。发送RST_STREAM以请求取消流或指示发生了错误情况。
+
+```
+    +---------------------------------------------------------------+
+    |                        Error Code (32)                        |
+    +---------------------------------------------------------------+
+
+                    Figure 9: RST_STREAM Frame Payload
+```
+
+RST_STREAM帧包含一个唯一的无符号32位整数，用于标识错误代码（第7节）。错误代码指示为什么终止流。 
+
+RST_STREAM帧未定义任何标志。 RST_STREAM帧完全终止引用的流，并使其进入`closed`状态。流在接收到RST_STREAM之后，接收者必须不发送该流的其他帧，但`PRIORITY`帧除外。但是，在发送了RST_STREAM之后，发送端点必须准备好接收和处理在流上发送的其他帧，这些帧可能是在RST_STREAM到达之前由对等方发送的。
+
+RST_STREAM帧必须与流关联。如果接收到流标识符为0x0的RST_STREAM帧，则接收者必须将其视为`PROTOCOL_ERROR`类型的连接错误（第5.4.1节）。 
+
+RST_STREAM帧不得以`idle`状态发送给流。如果接收到标识空闲流的RST_STREAM帧，则接收方必须将此视为`PROTOCOL_ERROR`类型的连接错误（第5.4.1节）。
+
+长度非4个八位位组的RST_STREAM帧必须被视为`FRAME_SIZE_ERROR`类型的连接错误（第5.4.1节）。
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+6.4.  RST_STREAM
+
+   The RST_STREAM frame (type=0x3) allows for immediate termination of a
+   stream.  RST_STREAM is sent to request cancellation of a stream or to
+   indicate that an error condition has occurred.
+
+    +---------------------------------------------------------------+
+    |                        Error Code (32)                        |
+    +---------------------------------------------------------------+
+
+                    Figure 9: RST_STREAM Frame Payload
+
+   The RST_STREAM frame contains a single unsigned, 32-bit integer
+   identifying the error code (Section 7).  The error code indicates why
+   the stream is being terminated.
+
+   The RST_STREAM frame does not define any flags.
+
+   The RST_STREAM frame fully terminates the referenced stream and
+   causes it to enter the "closed" state.  After receiving a RST_STREAM
+   on a stream, the receiver MUST NOT send additional frames for that
+   stream, with the exception of PRIORITY.  However, after sending the
+   RST_STREAM, the sending endpoint MUST be prepared to receive and
+   process additional frames sent on the stream that might have been
+   sent by the peer prior to the arrival of the RST_STREAM.
+
+   RST_STREAM frames MUST be associated with a stream.  If a RST_STREAM
+   frame is received with a stream identifier of 0x0, the recipient MUST
+   treat this as a connection error (Section 5.4.1) of type
+   PROTOCOL_ERROR.
+
+   RST_STREAM frames MUST NOT be sent for a stream in the "idle" state.
+   If a RST_STREAM frame identifying an idle stream is received, the
+   recipient MUST treat this as a connection error (Section 5.4.1) of
+   type PROTOCOL_ERROR.
+
+   A RST_STREAM frame with a length other than 4 octets MUST be treated
+   as a connection error (Section 5.4.1) of type FRAME_SIZE_ERROR.
+
+</code>
+</pre>
+</details>
+
+### 6.5 SETTINGS
+
+SETTINGS帧（类型=0x4）传达影响端点通信方式的配置参数，例如，对等方行为的偏好和约束。 SETTINGS帧也用于确认那些参数的接收。单独地，SETTINGS参数也可以称为`setting`。
+
+它们描述了发送方的特征，接收方使用这些特征。每个对等体可以通告相同参数的不同值。例如，客户端可能会设置较高的初始流控制窗口，而服务器可能会设置较低的值以节省资源。
+
+SETTINGS帧必须在连接开始时由两个端点发送，并且可以在任何其他时间由任一端点发送连接的整个生命周期内的端点。实现必须支持该规范定义的所有参数。
+
+SETTINGS帧中的每个参数都将替换该参数的任何现有值。参数按照它们出现的顺序进行处理，并且SETTINGS帧的接收者不需要维护其参数当前值以外的任何状态。因此，SETTINGS参数的值是areceiver看到的最后一个值。
+
+SETTINGS参数被接收对等方确认。要启用此功能，SETTINGS帧定义以下标志：
+
+  - ACK（0x1）：设置后，位0指示此帧确认对等方SETTINGS帧的接收和应用。设置此位后，SETTINGS帧的有效载荷必须为空。接收到设置了ACK标志且长度字段值不为0的SETTINGS帧，必须将其视为FRAME_SIZE_ERROR类型的连接错误（第5.4.1节）。有关更多信息，请参见第6.5.3节（“设置同步”）。
+  
+SETTINGS帧始终应用于连接，而不是单个流。SETTINGS帧的流标识符必须为零（0x0）。如果端点接收到流标识符字段不是0x0的SETTINGS帧，则端点必须以`PROTOCOL_ERROR`类型的连接错误（第5.4.1节）进行响应。
+
+SETTINGS帧影响连接状态。格式错误或不完整的SETTINGS帧必须视为`PROTOCOL_ERROR`类型的连接错误（第5.4.1节）。
+
+长度除6个八位位组的倍数以外的SETTINGS帧必须视为`FRAME_SIZE_ERROR`类型的连接错误（5.4.1节）。
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+6.5.  SETTINGS
+
+   The SETTINGS frame (type=0x4) conveys configuration parameters that
+   affect how endpoints communicate, such as preferences and constraints
+   on peer behavior.  The SETTINGS frame is also used to acknowledge the
+   receipt of those parameters.  Individually, a SETTINGS parameter can
+   also be referred to as a "setting".
+
+   SETTINGS parameters are not negotiated; they describe characteristics
+   of the sending peer, which are used by the receiving peer.  Different
+   values for the same parameter can be advertised by each peer.  For
+   example, a client might set a high initial flow-control window,
+   whereas a server might set a lower value to conserve resources.
+
+   A SETTINGS frame MUST be sent by both endpoints at the start of a
+   connection and MAY be sent at any other time by either endpoint over
+   the lifetime of the connection.  Implementations MUST support all of
+   the parameters defined by this specification.
+
+   Each parameter in a SETTINGS frame replaces any existing value for
+   that parameter.  Parameters are processed in the order in which they
+   appear, and a receiver of a SETTINGS frame does not need to maintain
+   any state other than the current value of its parameters.  Therefore,
+   the value of a SETTINGS parameter is the last value that is seen by a
+   receiver.
+
+   SETTINGS parameters are acknowledged by the receiving peer.  To
+   enable this, the SETTINGS frame defines the following flag:
+
+   ACK (0x1):  When set, bit 0 indicates that this frame acknowledges
+      receipt and application of the peer's SETTINGS frame.  When this
+      bit is set, the payload of the SETTINGS frame MUST be empty.
+      Receipt of a SETTINGS frame with the ACK flag set and a length
+      field value other than 0 MUST be treated as a connection error
+      (Section 5.4.1) of type FRAME_SIZE_ERROR.  For more information,
+      see Section 6.5.3 ("Settings Synchronization").
+
+   SETTINGS frames always apply to a connection, never a single stream.
+   The stream identifier for a SETTINGS frame MUST be zero (0x0).  If an
+   endpoint receives a SETTINGS frame whose stream identifier field is
+   anything other than 0x0, the endpoint MUST respond with a connection
+   error (Section 5.4.1) of type PROTOCOL_ERROR.
+
+   The SETTINGS frame affects connection state.  A badly formed or
+   incomplete SETTINGS frame MUST be treated as a connection error
+   (Section 5.4.1) of type PROTOCOL_ERROR.
+
+   A SETTINGS frame with a length other than a multiple of 6 octets MUST
+   be treated as a connection error (Section 5.4.1) of type
+   FRAME_SIZE_ERROR.
+
+</code>
+</pre>
+</details>
+
+#### 6.5.1 SETTINGS格式
+
+SETTINGS帧的有效载荷由零个或多个参数组成，每个参数由一个无符号的16位设置标识符和一个无符号的32位值组成。
+
+```
+    +-------------------------------+
+    |       Identifier (16)         |
+    +-------------------------------+-------------------------------+
+    |                        Value (32)                             |
+    +---------------------------------------------------------------+
+
+                         Figure 10: Setting Format
+```
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+
+6.5.1.  SETTINGS Format
+
+   The payload of a SETTINGS frame consists of zero or more parameters,
+   each consisting of an unsigned 16-bit setting identifier and an
+   unsigned 32-bit value.
+
+    +-------------------------------+
+    |       Identifier (16)         |
+    +-------------------------------+-------------------------------+
+    |                        Value (32)                             |
+    +---------------------------------------------------------------+
+
+                         Figure 10: Setting Format
+
+</code>
+</pre>
+</details>
+
+#### 6.5.2 定义SETTINGS参数
+
+定义了以下参数：
+  - SETTINGS_HEADER_TABLE_SIZE（0x1）：允许发送方以字节为单位，通知远程端点用于解码标头块的标头压缩表的最大大小。编码器可以通过使用特定于前端块内标头压缩格式的信号来选择等于或小于此值的任何大小（请参阅[COMPRESSION]）。初始值为4,096个八位位组。
+  - SETTINGS_ENABLE_PUSH（0x2）：此设置可用于禁用服务器推送（第8.2节）。如果端点接收到此参数设置为0，则不得发送PUSH_PROMISE帧。既已将此参数都设置为0且已被确认的端点必须将PUSH_PROMISE帧的接收视为PROTOCOL_ERROR类型的连接错误（第5.4.1节）。
+  初始值为1，表示允许服务器推送。除0或1以外的任何值都必须被视为类型为PROTOCOL_ERROR。
+  - SETTINGS_MAX_CONCURRENT_STREAMS（0x3）的连接错误（第5.4.1节）：指示发送方允许的最大并发流数。此限制是有方向的：它适用于发送方允许接收方创建的流的数量。最初，此值没有限制。建议该值不小于100，以免不必要地限制并行度。端点不应将SETTINGS_MAX_CONCURRENT_STREAMS的0值视为特殊值。零值的确会阻止创建新的流。但是，对于活动流耗尽的任何限制也可能发生这种情况。服务器应仅在短时间内设置零值；如果服务器不希望接受请求，则更合适的方法是关闭连接。
+  - SETTINGS_INITIAL_WINDOW_SIZE（0x4）：指示发送方的初始窗口大小（以八位字节为单位），用于流级别的流控制。初始值为2^16-1（65,535）个八位位组。此设置影响所有流的窗口大小（请参见6.9.2节）。大于最大流控制窗口大小2^31-1的值必须视为FLOW_CONTROL_ERROR类型的连接错误（第5.4.1节）。
+  - SETTINGS_MAX_FRAME_SIZE（0x5）：指示发送方愿意的最大帧有效负载的大小以八位位组接收。初始值为2^14（16,384）个八位位组。端点通告的值必须在此初始值和允许的最大帧大小（2 ^ 24-1或16,777,215个八位位组）之间（包括此值）。超出此范围的值必须视为类型为PROTOCOL_ERROR的连接错误（第5.4.1节）。
+  - SETTINGS_MAX_HEADER_LIST_SIZE（0x6）：此建议设置通知发送方准备接受的报头列表的最大大小（八位字节）。该值基于标题字段的未压缩大小，包括名称的长度和以八位字节为单位的值，以及每个标题字段的32个八位字节的开销。
+  对于任何给定的请求，可以强制执行比所公布的更低的限制。此设置的初始值是无限的。
+  
+接收到带有任何未知或不受支持的标识符的SETTINGS帧的端点必须忽略该设置。
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+6.5.2.  Defined SETTINGS Parameters
+
+   The following parameters are defined:
+
+   SETTINGS_HEADER_TABLE_SIZE (0x1):  Allows the sender to inform the
+      remote endpoint of the maximum size of the header compression
+      table used to decode header blocks, in octets.  The encoder can
+      select any size equal to or less than this value by using
+      signaling specific to the header compression format inside a
+      header block (see [COMPRESSION]).  The initial value is 4,096
+      octets.
+
+   SETTINGS_ENABLE_PUSH (0x2):  This setting can be used to disable
+      server push (Section 8.2).  An endpoint MUST NOT send a
+      PUSH_PROMISE frame if it receives this parameter set to a value of
+      0.  An endpoint that has both set this parameter to 0 and had it
+      acknowledged MUST treat the receipt of a PUSH_PROMISE frame as a
+      connection error (Section 5.4.1) of type PROTOCOL_ERROR.
+
+      The initial value is 1, which indicates that server push is
+      permitted.  Any value other than 0 or 1 MUST be treated as a
+      connection error (Section 5.4.1) of type PROTOCOL_ERROR.
+
+   SETTINGS_MAX_CONCURRENT_STREAMS (0x3):  Indicates the maximum number
+      of concurrent streams that the sender will allow.  This limit is
+      directional: it applies to the number of streams that the sender
+      permits the receiver to create.  Initially, there is no limit to
+      this value.  It is recommended that this value be no smaller than
+      100, so as to not unnecessarily limit parallelism.
+
+      A value of 0 for SETTINGS_MAX_CONCURRENT_STREAMS SHOULD NOT be
+      treated as special by endpoints.  A zero value does prevent the
+      creation of new streams; however, this can also happen for any
+      limit that is exhausted with active streams.  Servers SHOULD only
+      set a zero value for short durations; if a server does not wish to
+      accept requests, closing the connection is more appropriate.
+
+   SETTINGS_INITIAL_WINDOW_SIZE (0x4):  Indicates the sender's initial
+      window size (in octets) for stream-level flow control.  The
+      initial value is 2^16-1 (65,535) octets.
+
+      This setting affects the window size of all streams (see
+      Section 6.9.2).
+
+      Values above the maximum flow-control window size of 2^31-1 MUST
+      be treated as a connection error (Section 5.4.1) of type
+      FLOW_CONTROL_ERROR.
+
+   SETTINGS_MAX_FRAME_SIZE (0x5):  Indicates the size of the largest
+      frame payload that the sender is willing to receive, in octets.
+
+      The initial value is 2^14 (16,384) octets.  The value advertised
+      by an endpoint MUST be between this initial value and the maximum
+      allowed frame size (2^24-1 or 16,777,215 octets), inclusive.
+      Values outside this range MUST be treated as a connection error
+      (Section 5.4.1) of type PROTOCOL_ERROR.
+
+   SETTINGS_MAX_HEADER_LIST_SIZE (0x6):  This advisory setting informs a
+      peer of the maximum size of header list that the sender is
+      prepared to accept, in octets.  The value is based on the
+      uncompressed size of header fields, including the length of the
+      name and value in octets plus an overhead of 32 octets for each
+      header field.
+
+      For any given request, a lower limit than what is advertised MAY
+      be enforced.  The initial value of this setting is unlimited.
+
+   An endpoint that receives a SETTINGS frame with any unknown or
+   unsupported identifier MUST ignore that setting.
+
+</code>
+</pre>
+</details>
+
+#### 6.5.3 设置同步
+
+SETTINGS中的大多数值受益于或需要了解对等方何时接收并应用更改后的参数值。为了提供此类同步时间点，未设置ACK标志的SETTINGS帧的接收者必须尽快应用更新的参数。
+
+SETTINGS帧中的值必须按照它们出现的顺序进行处理，而各值之间不得进行其他帧处理。不支持的参数必须被忽略。一旦处理完所有值，接收方必须立即发出带有ACK标志集的SETTINGS帧。收到设置了ACK标志的SETTINGS帧后，更改的参数的发送者可以依赖于已应用的设置。
+
+如果SETTINGS帧的发送者在合理的时间内未收到确认，则可能会发出连接错误（本节5.4.1）类型的SETTINGS_TIMEOUT。
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+6.5.3.  Settings Synchronization
+
+   Most values in SETTINGS benefit from or require an understanding of
+   when the peer has received and applied the changed parameter values.
+   In order to provide such synchronization timepoints, the recipient of
+   a SETTINGS frame in which the ACK flag is not set MUST apply the
+   updated parameters as soon as possible upon receipt.
+
+   The values in the SETTINGS frame MUST be processed in the order they
+   appear, with no other frame processing between values.  Unsupported
+   parameters MUST be ignored.  Once all values have been processed, the
+   recipient MUST immediately emit a SETTINGS frame with the ACK flag
+   set.  Upon receiving a SETTINGS frame with the ACK flag set, the
+   sender of the altered parameters can rely on the setting having been
+   applied.
+
+   If the sender of a SETTINGS frame does not receive an acknowledgement
+   within a reasonable amount of time, it MAY issue a connection error
+   (Section 5.4.1) of type SETTINGS_TIMEOUT.
+
+</code>
+</pre>
+</details>
+
+### 6.6 PUSH_PROMISE
+
+PUSH_PROMISE帧（类型=0x5）用于在发送方打算初始化的流之前提前通知对等终结点。 PUSH_PROMISE帧包括端点计划创建的流的无符号31位标识符，以及为流提供其他上下文的一组报头。 8.2节详细介绍了PUSH_PROMISE帧的使用。
+
+```
+    +---------------+
+    |Pad Length? (8)|
+    +-+-------------+-----------------------------------------------+
+    |R|                  Promised Stream ID (31)                    |
+    +-+-----------------------------+-------------------------------+
+    |                   Header Block Fragment (*)                 ...
+    +---------------------------------------------------------------+
+    |                           Padding (*)                       ...
+    +---------------------------------------------------------------+
+
+                  Figure 11: PUSH_PROMISE Payload Format
+```
+
+PUSH_PROMISE帧有效载荷具有以下字段：
+
+  - Pad Length：一个8位字段，包含以八位字节为单位的帧填充长度。仅当设置了PADDED标志时，此字段才存在。
+  - R：单个保留位。
+  - Promised Stream ID: 一个无符号的31位整数，用于标识PUSH_PROMISE保留的流。承诺的流标识符必须是发送方发送的下一个流的有效选择（请参阅第5.1.1节中的“新流标识符”）。
+  - Header Block Fragment：包含请求标头字段的标头块片段（第4.3节）。
+  - Padding：填充八位字节。
+  
+PUSH_PROMISE帧定义以下标志：
+  - END_HEADERS（0x4）：置位时，位2指示该帧包含整个标题块（第4.3节），并且之后没有任何CONTINUATION帧。没有设置END_HEADERS标志的PUSH_PROMISE帧之后必须是同一流的CONTINUATION帧。接收者必须将接收到的任何其他类型的帧或不同流上的帧视为PROTOCOL_ERROR类型的连接错误（第5.4.1节）
+  - PADDED（0x8）：置位时，第3位指示Pad Length字段以及任何存在它描述的填充。 
+  
+PUSH_PROMISE帧只能在处于`open`或`half-close(remote)`状态的对等方发起的流上发送。 PUSH_PROMISE帧的流标识符指示与其关联的流。如果流标识符字段指定值为0x0，则接收者务必以PROTOCOL_ERROR类型的连接错误（第5.4.1节）进行响应。
+
+不需要按承诺的顺序使用承诺的流。 PUSH_PROMISE仅保留流标识符供以后使用。如果对等端点的SETTINGS_ENABLE_PUSH设置设为0，则不得发送PUSH_PROMISE。已设置此设置并已收到确认的端点必须将PUSH_PROMISE帧的接收视为PROTOCOL_ERROR类型的连接错误（第5.4.1节）。
+
+PUSH_PROMISE帧的接收者可以选择返回RST_STREAM，将RST的流标识符返回给PUSH_PROMISE的发送者，从而拒绝承诺的流。 
+
+PUSH_PROMISE帧以两种方式修改连接状态。首先，包含头块（第4.3节）可能会修改为头压缩而维护的状态。其次，PUSH_PROMISE还保留了一个流供以后使用，从而使承诺的流进入`reserved`状态。发送者不得在流上发送PUSH_PROMISE，除非该流是`open`或`half-closed (remote)`；发送方必须确保承诺流是新流标识符的有效选择（第5.1.1节）（也就是说，承诺流必须处于“空闲”状态）。
+
+由于PUSH_PROMISE保留流，因此忽略PUSH_PROMISE帧会导致流状态变得不确定。接收者必须处理既不是“开放”也不是“半封闭（本地）”的流上的PUSH_PROMISE接收，作为PROTOCOL_ERROR类型的连接错误（第5.4.1节）。但是，在相关流上发送了RST_STREAM的端点必须处理在接收和处理RST_STREAM帧之前可能已经创建的PUSH_PROMISE帧。
+
+接收者必须将收到的PUSH_PROMISE视为允诺将非法流标识符（第5.1.1节）视为PROTOCOL_ERROR类型的连接错误（第5.4.1节）。注意，非法的流标识符是当前不处于“空闲”状态的流的标识符。 
+
+PUSH_PROMISE帧可以包含填充。填充字段和标志与为DATA帧定义的填充字段和标志相同（第6.1节）。
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+6.6.  PUSH_PROMISE
+
+   The PUSH_PROMISE frame (type=0x5) is used to notify the peer endpoint
+   in advance of streams the sender intends to initiate.  The
+   PUSH_PROMISE frame includes the unsigned 31-bit identifier of the
+   stream the endpoint plans to create along with a set of headers that
+   provide additional context for the stream.  Section 8.2 contains a
+   thorough description of the use of PUSH_PROMISE frames.
+
+    +---------------+
+    |Pad Length? (8)|
+    +-+-------------+-----------------------------------------------+
+    |R|                  Promised Stream ID (31)                    |
+    +-+-----------------------------+-------------------------------+
+    |                   Header Block Fragment (*)                 ...
+    +---------------------------------------------------------------+
+    |                           Padding (*)                       ...
+    +---------------------------------------------------------------+
+
+                  Figure 11: PUSH_PROMISE Payload Format
+
+   The PUSH_PROMISE frame payload has the following fields:
+
+   Pad Length:  An 8-bit field containing the length of the frame
+      padding in units of octets.  This field is only present if the
+      PADDED flag is set.
+
+   R: A single reserved bit.
+
+   Promised Stream ID:  An unsigned 31-bit integer that identifies the
+      stream that is reserved by the PUSH_PROMISE.  The promised stream
+      identifier MUST be a valid choice for the next stream sent by the
+      sender (see "new stream identifier" in Section 5.1.1).
+
+   Header Block Fragment:  A header block fragment (Section 4.3)
+      containing request header fields.
+
+   Padding:  Padding octets.
+
+   The PUSH_PROMISE frame defines the following flags:
+
+   END_HEADERS (0x4):  When set, bit 2 indicates that this frame
+      contains an entire header block (Section 4.3) and is not followed
+      by any CONTINUATION frames.
+
+      A PUSH_PROMISE frame without the END_HEADERS flag set MUST be
+      followed by a CONTINUATION frame for the same stream.  A receiver
+      MUST treat the receipt of any other type of frame or a frame on a
+      different stream as a connection error (Section 5.4.1) of type
+      PROTOCOL_ERROR.
+
+   PADDED (0x8):  When set, bit 3 indicates that the Pad Length field
+      and any padding that it describes are present.
+
+   PUSH_PROMISE frames MUST only be sent on a peer-initiated stream that
+   is in either the "open" or "half-closed (remote)" state.  The stream
+   identifier of a PUSH_PROMISE frame indicates the stream it is
+   associated with.  If the stream identifier field specifies the value
+   0x0, a recipient MUST respond with a connection error (Section 5.4.1)
+   of type PROTOCOL_ERROR.
+
+   Promised streams are not required to be used in the order they are
+   promised.  The PUSH_PROMISE only reserves stream identifiers for
+   later use.
+
+   PUSH_PROMISE MUST NOT be sent if the SETTINGS_ENABLE_PUSH setting of
+   the peer endpoint is set to 0.  An endpoint that has set this setting
+   and has received acknowledgement MUST treat the receipt of a
+   PUSH_PROMISE frame as a connection error (Section 5.4.1) of type
+   PROTOCOL_ERROR.
+
+   Recipients of PUSH_PROMISE frames can choose to reject promised
+   streams by returning a RST_STREAM referencing the promised stream
+   identifier back to the sender of the PUSH_PROMISE.
+
+   A PUSH_PROMISE frame modifies the connection state in two ways.
+   First, the inclusion of a header block (Section 4.3) potentially
+   modifies the state maintained for header compression.  Second,
+   PUSH_PROMISE also reserves a stream for later use, causing the
+   promised stream to enter the "reserved" state.  A sender MUST NOT
+   send a PUSH_PROMISE on a stream unless that stream is either "open"
+   or "half-closed (remote)"; the sender MUST ensure that the promised
+   stream is a valid choice for a new stream identifier (Section 5.1.1)
+   (that is, the promised stream MUST be in the "idle" state).
+
+   Since PUSH_PROMISE reserves a stream, ignoring a PUSH_PROMISE frame
+   causes the stream state to become indeterminate.  A receiver MUST
+   treat the receipt of a PUSH_PROMISE on a stream that is neither
+   "open" nor "half-closed (local)" as a connection error
+   (Section 5.4.1) of type PROTOCOL_ERROR.  However, an endpoint that
+   has sent RST_STREAM on the associated stream MUST handle PUSH_PROMISE
+   frames that might have been created before the RST_STREAM frame is
+   received and processed.
+
+   A receiver MUST treat the receipt of a PUSH_PROMISE that promises an
+   illegal stream identifier (Section 5.1.1) as a connection error
+   (Section 5.4.1) of type PROTOCOL_ERROR.  Note that an illegal stream
+   identifier is an identifier for a stream that is not currently in the
+   "idle" state.
+
+   The PUSH_PROMISE frame can include padding.  Padding fields and flags
+   are identical to those defined for DATA frames (Section 6.1).
+
+</code>
+</pre>
+</details>
+
+### 6.7 PING
+
+PING帧（类型=0x6）是一种机制，用于测量来自发送方的最短往返时间，并确定是否仍能正常进行连接。可以从任何端点发送PING帧。
+
+```
+    +---------------------------------------------------------------+
+    |                                                               |
+    |                      Opaque Data (64)                         |
+    |                                                               |
+    +---------------------------------------------------------------+
+
+                      Figure 12: PING Payload Format
+```
+
+除帧头外，PING帧还必须在有效载荷中包含8个八位字节的不透明数据。发送者可以选择任何值，并以任何方式使用这些八位位组。
+
+不包含ACK标志的PING帧的接收者必须发送一个ACK标志作为响应而设置的PING帧，并具有相同的有效载荷。与其他任何帧相比，应该给PING响应更高的优先级。 
+
+PING帧定义以下标志：
+
+  - ACK（0x1）：置1时，位0指示此PING帧是PING响应。端点必须在PING响应中设置该标志。端点不得响应包含此标志的PING帧。 
+  
+PING帧不与任何单独的流相关联。如果收到的PINGframe的流标识符字段值不是0x0，则接收者务必以PROTOCOL_ERROR类型的连接错误（第5.4.1节）做出响应。
+
+收到长度字段值为8以外的PING帧时，必须将其视为FRAME_SIZE_ERROR类型的连接错误（第5.4.1节）。
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+6.7.  PING
+
+   The PING frame (type=0x6) is a mechanism for measuring a minimal
+   round-trip time from the sender, as well as determining whether an
+   idle connection is still functional.  PING frames can be sent from
+   any endpoint.
+
+    +---------------------------------------------------------------+
+    |                                                               |
+    |                      Opaque Data (64)                         |
+    |                                                               |
+    +---------------------------------------------------------------+
+
+                      Figure 12: PING Payload Format
+
+   In addition to the frame header, PING frames MUST contain 8 octets of
+   opaque data in the payload.  A sender can include any value it
+   chooses and use those octets in any fashion.
+
+   Receivers of a PING frame that does not include an ACK flag MUST send
+   a PING frame with the ACK flag set in response, with an identical
+   payload.  PING responses SHOULD be given higher priority than any
+   other frame.
+
+   The PING frame defines the following flags:
+
+   ACK (0x1):  When set, bit 0 indicates that this PING frame is a PING
+      response.  An endpoint MUST set this flag in PING responses.  An
+      endpoint MUST NOT respond to PING frames containing this flag.
+
+   PING frames are not associated with any individual stream.  If a PING
+   frame is received with a stream identifier field value other than
+   0x0, the recipient MUST respond with a connection error
+   (Section 5.4.1) of type PROTOCOL_ERROR.
+
+   Receipt of a PING frame with a length field value other than 8 MUST
+   be treated as a connection error (Section 5.4.1) of type
+   FRAME_SIZE_ERROR.
+
+</code>
+</pre>
+</details>
+
+### 6.8 GOAWAY
+
+GOAWAY帧（类型=0x7）用于启动连接的关闭或发出严重的错误情况信号。 GOAWAY允许端点优雅地停止接受新的流，同时仍然完成对先前建立的流的处理。这样就可以执行诸如服务器维护之类的管理操作。
+
+在端点之间，存在一个固有的竞争条件，即启动新数据流的端点与远程发送GOAWAY帧的端点之间。为了处理这种情况，GOAWAY包含该连接的发送端上已经或可能处理的最后一个对等端发起的流的流标识符。例如，如果服务器发送GOAWAY帧，则标识的流是客户端启动的编号最高的流。
+
+发送后，如果流的标识符高于所包含的最后一个流标识符，则发送方将忽略在接收方发起的流上发送的帧。尽管可以为新的流建立新的连接，但GOAWAY帧的接收方一定不能在连接上打开其他流。
+
+如果GOAWAY的接收方已在流标识符高于GOAWAY帧指示的流上发送数据，则这些流不会或将不会被处理。 GOAWAY帧的接收方可以将这些流视为从未创建过的流，从而允许这些流稍后在新的连接上重试。
+
+端点应始终在关闭连接之前发送GOAWAY帧，以便远程对等方可以知道流是否已部分处理。例如，如果HTTP客户端在服务器关闭连接的同时发送POST，则如果服务器未发送GOAWAY帧来指示其可能作用的流，则客户端无法知道服务器是否开始处理该POST请求。
+
+端点可能选择关闭连接，而不发送用于对等端行为不佳的GOAWAY。
+
+GOAWAY帧可能不会立即关闭连接；不再使用该连接的GOAWAY的接收方在终止连接之前仍应发送GOAWAY帧。
+
+···
++-+-------------------------------------------------------------+
+|R|                  Last-Stream-ID (31)                        |
++-+-------------------------------------------------------------+
+|                      Error Code (32)                          |
++---------------------------------------------------------------+
+|                  Additional Debug Data (*)                    |
++---------------------------------------------------------------+
+
+                 Figure 13: GOAWAY Payload Format
+···
+
+GOAWAY帧未定义任何标志。
+
+GOAWAY帧适用于连接，而不是特定的流。端点必须将流标识符非0x0的GOAWAY帧视为PROTOCOL_ERROR类型的连接错误（第5.4.1节）。
+
+GOAWAY帧中的最后一个流标识符包含编号最高的流标识符，对于该标识符，GOAWAY帧的发送者可能已对其采取了某些措施或可能尚未采取措施。直至并包括已标识流的所有流都可能已经过某种处理。如果未处理任何流，则最后一个流标识符可以设置为0。
+
+  注意：在这种情况下，“已处理”是指流中的某些数据被传递到了可能会采取某些措施的较高软件层。
+  
+如果连接终止而没有GOAWAY帧，则最后一个流标识符实际上是最高的可能的流标识符。
+
+在具有较低编号或相等编号的标识符的流（在关闭连接之前未完全关闭）上，无法重新尝试请求，事务或任何协议活动，但幂等操作（例如HTTP GET，PUT或DELETE）除外。可以使用新连接安全地重试使用编号更高的流的任何协议活动。
+
+编号小于或等于最后一个streamidentifier的流上的活动仍可能成功完成。 GOAWAY帧的发送方可以通过发送GOAWAY帧来正常关闭连接，将连接保持在“打开”状态，直到所有进行中的流完成为止。
+
+如果情况发生变化，端点可能会发送多个GOAWAY帧。例如，在正常关机期间发送NO_ERROR的GOAWAY端点可能随后遇到需要立即终止连接的情况。从最后收到的GOAWAY帧中收到的最后一个流标识符表示哪些流可能已经作用了。端点不得增加它们在最后一个流标识符中发送的值，因为对等点可能已经在另一个连接上重试了未处理的请求。
+
+当服务器关闭连接时，无法重试请求的客户端将丢失所有正在处理的请求。对于可能不使用HTTP/2为客户端提供服务的中介而言，尤其如此。试图正常关闭连接的服务器应发送初始GOAWAY帧，最后一个流标识符设置为2^31-1，并提供NO_ERROR代码。这向客户端发出信号，即将关闭，并且禁止发起进一步的请求。在为任何进行中的流式传输留出时间（至少一个往返时间）之后，服务器可以发送具有更新的最后一个流标识符的另一个GOAWAY帧。这确保了可以干净地关闭连接而不会丢失请求。
+
+发送GOAWAY帧后，发送方可以丢弃接收方发起的流的帧，其标识符要比所标识的最后一个流高。但是，任何更改连接状态的框架都不能完全忽略。例如，必须最少处理HEADERS，PUSH_PROMISE和CONTINUATION帧，以确保为报头压缩保持的状态是一致的（请参见第4.3节）；类似地，数据帧必须计入连接流控制窗口。无法处理这些帧会导致流控制或报头压缩状态变得不同步。 
+
+GOAWAY框架还包含一个32位错误代码（第7节），其中包含关闭连接的原因。
+
+端点可以将不透明数据附加到任何GOAWAY帧的有效载荷上。其他调试数据仅用于诊断目的，不带语义值。调试信息可能包含对安全性或隐私敏感的数据。已记录或以其他方式持久存储的调试数据必须具有足够的防护措施，以防止未经授权的访问。
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+6.8.  GOAWAY
+
+   The GOAWAY frame (type=0x7) is used to initiate shutdown of a
+   connection or to signal serious error conditions.  GOAWAY allows an
+   endpoint to gracefully stop accepting new streams while still
+   finishing processing of previously established streams.  This enables
+   administrative actions, like server maintenance.
+
+   There is an inherent race condition between an endpoint starting new
+   streams and the remote sending a GOAWAY frame.  To deal with this
+   case, the GOAWAY contains the stream identifier of the last peer-
+   initiated stream that was or might be processed on the sending
+   endpoint in this connection.  For instance, if the server sends a
+   GOAWAY frame, the identified stream is the highest-numbered stream
+   initiated by the client.
+
+   Once sent, the sender will ignore frames sent on streams initiated by
+   the receiver if the stream has an identifier higher than the included
+   last stream identifier.  Receivers of a GOAWAY frame MUST NOT open
+   additional streams on the connection, although a new connection can
+   be established for new streams.
+
+   If the receiver of the GOAWAY has sent data on streams with a higher
+   stream identifier than what is indicated in the GOAWAY frame, those
+   streams are not or will not be processed.  The receiver of the GOAWAY
+   frame can treat the streams as though they had never been created at
+   all, thereby allowing those streams to be retried later on a new
+   connection.
+
+   Endpoints SHOULD always send a GOAWAY frame before closing a
+   connection so that the remote peer can know whether a stream has been
+   partially processed or not.  For example, if an HTTP client sends a
+   POST at the same time that a server closes a connection, the client
+   cannot know if the server started to process that POST request if the
+   server does not send a GOAWAY frame to indicate what streams it might
+   have acted on.
+
+   An endpoint might choose to close a connection without sending a
+   GOAWAY for misbehaving peers.
+
+   A GOAWAY frame might not immediately precede closing of the
+   connection; a receiver of a GOAWAY that has no more use for the
+   connection SHOULD still send a GOAWAY frame before terminating the
+   connection.
+
+    +-+-------------------------------------------------------------+
+    |R|                  Last-Stream-ID (31)                        |
+    +-+-------------------------------------------------------------+
+    |                      Error Code (32)                          |
+    +---------------------------------------------------------------+
+    |                  Additional Debug Data (*)                    |
+    +---------------------------------------------------------------+
+
+                     Figure 13: GOAWAY Payload Format
+
+   The GOAWAY frame does not define any flags.
+
+   The GOAWAY frame applies to the connection, not a specific stream.
+   An endpoint MUST treat a GOAWAY frame with a stream identifier other
+   than 0x0 as a connection error (Section 5.4.1) of type
+   PROTOCOL_ERROR.
+
+   The last stream identifier in the GOAWAY frame contains the highest-
+   numbered stream identifier for which the sender of the GOAWAY frame
+   might have taken some action on or might yet take action on.  All
+   streams up to and including the identified stream might have been
+   processed in some way.  The last stream identifier can be set to 0 if
+   no streams were processed.
+
+      Note: In this context, "processed" means that some data from the
+      stream was passed to some higher layer of software that might have
+      taken some action as a result.
+
+   If a connection terminates without a GOAWAY frame, the last stream
+   identifier is effectively the highest possible stream identifier.
+
+   On streams with lower- or equal-numbered identifiers that were not
+   closed completely prior to the connection being closed, reattempting
+   requests, transactions, or any protocol activity is not possible,
+   with the exception of idempotent actions like HTTP GET, PUT, or
+   DELETE.  Any protocol activity that uses higher-numbered streams can
+   be safely retried using a new connection.
+
+   Activity on streams numbered lower or equal to the last stream
+   identifier might still complete successfully.  The sender of a GOAWAY
+   frame might gracefully shut down a connection by sending a GOAWAY
+   frame, maintaining the connection in an "open" state until all in-
+   progress streams complete.
+
+   An endpoint MAY send multiple GOAWAY frames if circumstances change.
+   For instance, an endpoint that sends GOAWAY with NO_ERROR during
+   graceful shutdown could subsequently encounter a condition that
+   requires immediate termination of the connection.  The last stream
+   identifier from the last GOAWAY frame received indicates which
+   streams could have been acted upon.  Endpoints MUST NOT increase the
+   value they send in the last stream identifier, since the peers might
+   already have retried unprocessed requests on another connection.
+
+   A client that is unable to retry requests loses all requests that are
+   in flight when the server closes the connection.  This is especially
+   true for intermediaries that might not be serving clients using
+   HTTP/2.  A server that is attempting to gracefully shut down a
+   connection SHOULD send an initial GOAWAY frame with the last stream
+   identifier set to 2^31-1 and a NO_ERROR code.  This signals to the
+   client that a shutdown is imminent and that initiating further
+   requests is prohibited.  After allowing time for any in-flight stream
+   creation (at least one round-trip time), the server can send another
+   GOAWAY frame with an updated last stream identifier.  This ensures
+   that a connection can be cleanly shut down without losing requests.
+
+   After sending a GOAWAY frame, the sender can discard frames for
+   streams initiated by the receiver with identifiers higher than the
+   identified last stream.  However, any frames that alter connection
+   state cannot be completely ignored.  For instance, HEADERS,
+   PUSH_PROMISE, and CONTINUATION frames MUST be minimally processed to
+   ensure the state maintained for header compression is consistent (see
+   Section 4.3); similarly, DATA frames MUST be counted toward the
+   connection flow-control window.  Failure to process these frames can
+   cause flow control or header compression state to become
+   unsynchronized.
+
+   The GOAWAY frame also contains a 32-bit error code (Section 7) that
+   contains the reason for closing the connection.
+
+   Endpoints MAY append opaque data to the payload of any GOAWAY frame.
+   Additional debug data is intended for diagnostic purposes only and
+   carries no semantic value.  Debug information could contain security-
+   or privacy-sensitive data.  Logged or otherwise persistently stored
+   debug data MUST have adequate safeguards to prevent unauthorized
+   access.
+
+</code>
+</pre>
+</details>
+
+### 6.9 WINDOW_UPDATE
+
+WINDOW_UPDATE帧（类型= 0x8）用于实现流控制;有关概述，请参见5.2节。
+
+流控制在两个级别上运行：在每个单独的流和整个连接上。
+
+两种流控制类型都是逐跳的，即，仅在两个端点之间。中介程序不会在依赖的连接之间转发WINDOW_UPDATE帧。但是，任何接收者进行的数据传输节制都会间接导致流控制信息向原始发送者传播。
+
+流控制仅适用于被标识为受流控制的帧。在本文档中定义的帧类型中，这仅包括DATA帧。除非接收者无法分配资源来处理帧，否则必须接受和处理免于流控制的帧。如果接收器无法接受帧，则可能会以FLOW_CONTROL_ERROR类型的流错误（第5.4.2节）或连接错误（第5.4.1节）进行响应。
+
+```
+    +-+-------------------------------------------------------------+
+    |R|              Window Size Increment (31)                     |
+    +-+-------------------------------------------------------------+
+
+                  Figure 14: WINDOW_UPDATE Payload Format
+```
+
+WINDOW_UPDATE帧的有效载荷是一个保留位加上一个无符号的31位整数，指示发送者的八位字节数除了现有的流控制窗口外，还可以传输。流控制窗口增量的合法范围是1到2^31-1（2,147,483,647）个八位位组。
+
+WINDOW_UPDATE框架未定义任何标志。
+
+WINDOW_UPDATE帧可以特定于流或整个连接。在前一种情况下，帧的流标识符指示受影响的流；在后者中，值“ 0”指示整个连接是框架的主题。接收方必须将收到的WINDOW_UPDATE帧（其流控制窗口的增量为0）视为PROTOCOL_ERROR类型的流错误（见第5.4.2节）；连接流控制窗口上的错误必须视为连接错误（第5.4.1节）。
+
+对等方可以发送WINDOW_UPDATE，该对等方已发送带有END_STREAM标志的帧。这意味着接收方可以在“半闭路（远程）”或“闭路”流上接收WINDOW_UPDATE帧。接收方不得将此视为错误（请参阅第5.1节）。
+
+接收到流控制帧的接收者必须始终对连接流控制窗口做出贡献，除非接收者将其视为连接错误（第5.4.1节）。即使帧出错，这也是必要的。发送方将帧计数到流控制窗口，但是如果接收方没有，则发送方和接收方的流控制窗口可能会不同。
+
+必须将长度不是4个八位位组的WINDOW_UPDATE帧视为类型为FRAME_SIZE_ERROR的连接错误（第5.4.1节）。
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+6.9.  WINDOW_UPDATE
+
+   The WINDOW_UPDATE frame (type=0x8) is used to implement flow control;
+   see Section 5.2 for an overview.
+
+   Flow control operates at two levels: on each individual stream and on
+   the entire connection.
+
+   Both types of flow control are hop by hop, that is, only between the
+   two endpoints.  Intermediaries do not forward WINDOW_UPDATE frames
+   between dependent connections.  However, throttling of data transfer
+   by any receiver can indirectly cause the propagation of flow-control
+   information toward the original sender.
+
+   Flow control only applies to frames that are identified as being
+   subject to flow control.  Of the frame types defined in this
+   document, this includes only DATA frames.  Frames that are exempt
+   from flow control MUST be accepted and processed, unless the receiver
+   is unable to assign resources to handling the frame.  A receiver MAY
+   respond with a stream error (Section 5.4.2) or connection error
+   (Section 5.4.1) of type FLOW_CONTROL_ERROR if it is unable to accept
+   a frame.
+
+    +-+-------------------------------------------------------------+
+    |R|              Window Size Increment (31)                     |
+    +-+-------------------------------------------------------------+
+
+                  Figure 14: WINDOW_UPDATE Payload Format
+
+   The payload of a WINDOW_UPDATE frame is one reserved bit plus an
+   unsigned 31-bit integer indicating the number of octets that the
+   sender can transmit in addition to the existing flow-control window.
+   The legal range for the increment to the flow-control window is 1 to
+   2^31-1 (2,147,483,647) octets.
+
+   The WINDOW_UPDATE frame does not define any flags.
+
+   The WINDOW_UPDATE frame can be specific to a stream or to the entire
+   connection.  In the former case, the frame's stream identifier
+   indicates the affected stream; in the latter, the value "0" indicates
+   that the entire connection is the subject of the frame.
+
+   A receiver MUST treat the receipt of a WINDOW_UPDATE frame with an
+   flow-control window increment of 0 as a stream error (Section 5.4.2)
+   of type PROTOCOL_ERROR; errors on the connection flow-control window
+   MUST be treated as a connection error (Section 5.4.1).
+
+   WINDOW_UPDATE can be sent by a peer that has sent a frame bearing the
+   END_STREAM flag.  This means that a receiver could receive a
+   WINDOW_UPDATE frame on a "half-closed (remote)" or "closed" stream.
+   A receiver MUST NOT treat this as an error (see Section 5.1).
+
+   A receiver that receives a flow-controlled frame MUST always account
+   for its contribution against the connection flow-control window,
+   unless the receiver treats this as a connection error
+   (Section 5.4.1).  This is necessary even if the frame is in error.
+   The sender counts the frame toward the flow-control window, but if
+   the receiver does not, the flow-control window at the sender and
+   receiver can become different.
+
+   A WINDOW_UPDATE frame with a length other than 4 octets MUST be
+   treated as a connection error (Section 5.4.1) of type
+   FRAME_SIZE_ERROR.
+
+</code>
+</pre>
+</details>
+
+#### 6.9.1 Flow-Control Window
+
+HTTP/2中的流控制是使用每个发送者在每个流上保留的窗口来实现的。流量控制窗口是一个简单的整数值，指示允许发送方传输多少个八位位组的数据；因此，它的大小可以衡量接收器的缓冲能力。
+
+两个流控制窗口都适用：流流控制窗口和连接流控制窗口。发送方不得发送长度超过接收方通告的任何一个流控制窗口中可用空间的流控制帧。如果两个流控制窗口中都没有可用空间，则可以发送设置了END_STREAM标志的长度为零的帧（即空的DATA帧）。
+
+对于流控制计算，不计9个字节的帧头。
+
+流控制的帧，发送方通过传输的帧的长度减少两个窗口中的可用空间。
+
+帧的接收方发送WINDOW_UPDATE帧，因为它消耗数据并释放流控制窗口中的空间。为流和连接级别的流控制窗口发送单独的WINDOW_UPDATE帧。
+
+接收WINDOW_UPDATE帧的发送者以帧中指定的数量更新相应的窗口。
+
+发送者务必不允许流控制窗口超过2^31-1个八位位组。如果发送方收到WINDOW_UPDATE导致流量控制窗口超过此最大值，则发送方必须视情况终止流或连接。对于流，发送方以错误代码FLOW_CONTROL_ERROR发送RST_STREAM；对于连接，将发送一个错误代码为FLOW_CONTROL_ERROR的GOAWAY帧。
+
+来自发送方的流控制帧和来自接收方的WINDOW_UPDATE帧彼此完全异步。此属性允许接收方积极地将发送方保留的窗口大小更新为防止溪流停滞。
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+6.9.1.  The Flow-Control Window
+
+   Flow control in HTTP/2 is implemented using a window kept by each
+   sender on every stream.  The flow-control window is a simple integer
+   value that indicates how many octets of data the sender is permitted
+   to transmit; as such, its size is a measure of the buffering capacity
+   of the receiver.
+
+   Two flow-control windows are applicable: the stream flow-control
+   window and the connection flow-control window.  The sender MUST NOT
+   send a flow-controlled frame with a length that exceeds the space
+   available in either of the flow-control windows advertised by the
+   receiver.  Frames with zero length with the END_STREAM flag set (that
+   is, an empty DATA frame) MAY be sent if there is no available space
+   in either flow-control window.
+
+   For flow-control calculations, the 9-octet frame header is not
+   counted.
+
+   After sending a flow-controlled frame, the sender reduces the space
+   available in both windows by the length of the transmitted frame.
+
+   The receiver of a frame sends a WINDOW_UPDATE frame as it consumes
+   data and frees up space in flow-control windows.  Separate
+   WINDOW_UPDATE frames are sent for the stream- and connection-level
+   flow-control windows.
+
+   A sender that receives a WINDOW_UPDATE frame updates the
+   corresponding window by the amount specified in the frame.
+
+   A sender MUST NOT allow a flow-control window to exceed 2^31-1
+   octets.  If a sender receives a WINDOW_UPDATE that causes a flow-
+   control window to exceed this maximum, it MUST terminate either the
+   stream or the connection, as appropriate.  For streams, the sender
+   sends a RST_STREAM with an error code of FLOW_CONTROL_ERROR; for the
+   connection, a GOAWAY frame with an error code of FLOW_CONTROL_ERROR
+   is sent.
+
+   Flow-controlled frames from the sender and WINDOW_UPDATE frames from
+   the receiver are completely asynchronous with respect to each other.
+   This property allows a receiver to aggressively update the window
+   size kept by the sender to prevent streams from stalling.
+
+</code>
+</pre>
+</details>
+
+#### 6.9.2 初始流控制窗口大小
+
+首次建立HTTP/2连接时，将创建初始流控制窗口大小为65,535个八位位组的新流。连接流控制窗口也为65,535个八位位组。两个端点都可以通过在构成连接前言一部分的SETTINGS帧中包含SETTINGS_INITIAL_WINDOW_SIZE的值来调整新流的初始窗口大小。只能使用WINDOW_UPDATE帧来更改连接流控制窗口。
+
+在接收设置为SETTINGS_INITIAL_WINDOW_SIZE设置值的SETTINGS帧之前，端点在发送流控制的框架时只能使用默认的初始窗口大小。同样，将连接流控制窗口设置为默认的初始窗口大小，直到接收到WINDOW_UPDATE帧为止。
+
+除了更改尚未激活的流的流控制窗口外，SETTINGS帧还可以更改以下各项的初始流控制窗口大小：具有活动流控制窗口的流（即处于“打开”或“半关闭（远程）”状态的流）。当SETTINGS_INITIAL_WINDOW_SIZE的值更改时，接收方必须通过新值和旧值之间的差异来调整其所维护的所有流流控制窗口的大小。
+
+对SETTINGS_INITIAL_WINDOW_SIZE的更改可能导致流控制窗口中的可用空间变为负数。发送方必须跟踪否定的流控制窗口，并且在接收到导致流控制窗口变为正数的WINDOW_UPDATE帧之前，不得发送新的流控制帧。
+
+例如，如果客户端在连接建立后立即发送60 KB，并且服务器设置了初始窗口大小为16KB，客户端将在收到SETTINGS帧后将可用的流控制窗口重新计算为-44 KB。在WINDOW_UPDATE帧将窗口恢复为正值之前，客户端将保留负的流控制窗口，此后客户端可以继续发送。
+
+SETTINGS帧不能更改连接流控制窗口。
+
+端点必须处理对SETTINGS_INITIAL_WINDOW_SIZE的更改，这会导致任何流控制窗口超过最大大小，这是类型为FLOW_CONTROL_ERROR的连接错误（第5.4.1节）。
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+6.9.2.  Initial Flow-Control Window Size
+
+   When an HTTP/2 connection is first established, new streams are
+   created with an initial flow-control window size of 65,535 octets.
+   The connection flow-control window is also 65,535 octets.  Both
+   endpoints can adjust the initial window size for new streams by
+   including a value for SETTINGS_INITIAL_WINDOW_SIZE in the SETTINGS
+   frame that forms part of the connection preface.  The connection
+   flow-control window can only be changed using WINDOW_UPDATE frames.
+
+   Prior to receiving a SETTINGS frame that sets a value for
+   SETTINGS_INITIAL_WINDOW_SIZE, an endpoint can only use the default
+   initial window size when sending flow-controlled frames.  Similarly,
+   the connection flow-control window is set to the default initial
+   window size until a WINDOW_UPDATE frame is received.
+
+   In addition to changing the flow-control window for streams that are
+   not yet active, a SETTINGS frame can alter the initial flow-control
+   window size for streams with active flow-control windows (that is,
+   streams in the "open" or "half-closed (remote)" state).  When the
+   value of SETTINGS_INITIAL_WINDOW_SIZE changes, a receiver MUST adjust
+   the size of all stream flow-control windows that it maintains by the
+   difference between the new value and the old value.
+
+   A change to SETTINGS_INITIAL_WINDOW_SIZE can cause the available
+   space in a flow-control window to become negative.  A sender MUST
+   track the negative flow-control window and MUST NOT send new flow-
+   controlled frames until it receives WINDOW_UPDATE frames that cause
+   the flow-control window to become positive.
+
+   For example, if the client sends 60 KB immediately on connection
+   establishment and the server sets the initial window size to be 16
+   KB, the client will recalculate the available flow-control window to
+   be -44 KB on receipt of the SETTINGS frame.  The client retains a
+   negative flow-control window until WINDOW_UPDATE frames restore the
+   window to being positive, after which the client can resume sending.
+
+   A SETTINGS frame cannot alter the connection flow-control window.
+
+   An endpoint MUST treat a change to SETTINGS_INITIAL_WINDOW_SIZE that
+   causes any flow-control window to exceed the maximum size as a
+   connection error (Section 5.4.1) of type FLOW_CONTROL_ERROR.
+
+</code>
+</pre>
+</details>
+
+#### 6.9.3 减小流窗口大小
+
+希望使用比当前大小小的流控制窗口的接收器可以发送新的SETTINGS帧。但是，接收者必须准备好接收超过该窗口大小的数据，因为发送者可能在处理SETTINGS帧之前发送了超出下限的数据。
+
+发送设置帧以减小初始流控制窗口大小之后，接收者可以继续超过流量控制限制的处理流。允许流继续运行不会使接收方立即减少其为流控制窗口保留的空间。这些流上的进度也可能会停止，因为需要WINDOW_UPDATE帧来允许发送方继续发送。接收者可以向受影响的流发送RST_STREAM，错误代码为FLOW_CONTROL_ERROR。
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+6.9.3.  Reducing the Stream Window Size
+
+   A receiver that wishes to use a smaller flow-control window than the
+   current size can send a new SETTINGS frame.  However, the receiver
+   MUST be prepared to receive data that exceeds this window size, since
+   the sender might send data that exceeds the lower limit prior to
+   processing the SETTINGS frame.
+
+   After sending a SETTINGS frame that reduces the initial flow-control
+   window size, a receiver MAY continue to process streams that exceed
+   flow-control limits.  Allowing streams to continue does not allow the
+   receiver to immediately reduce the space it reserves for flow-control
+   windows.  Progress on these streams can also stall, since
+   WINDOW_UPDATE frames are needed to allow the sender to resume
+   sending.  The receiver MAY instead send a RST_STREAM with an error
+   code of FLOW_CONTROL_ERROR for the affected streams.
+
+</code>
+</pre>
+</details>
+
+### 6.10 CONTINUATION
+
+CONTINUATION帧（类型=0x9）用于继续一系列标题块片段（第4.3节）。只要前一帧在同一流上并且是没有设置END_HEADERS标志的HEADERS，PUSH_PROMISE或CONTINUATION帧，就可以发送任意数量的CONTINUATION帧。
+
+```
+    +---------------------------------------------------------------+
+    |                   Header Block Fragment (*)                 ...
+    +---------------------------------------------------------------+
+
+                   Figure 15: CONTINUATION Frame Payload
+```
+
+CONTINUATION帧有效载荷包含一个头块片段（第4.3节）。
+
+CONTINUATION帧定义了以下标志：
+
+  - END_HEADERS（0x4）：置位时，位2指示该帧结束在前面的块（第4.3节）。
+  如果未设置END_HEADERS位，则此帧后必须跟另一个CONTINUATION帧。接收方必须将接收到的任何其他类型的帧或不同流上的帧视为PROTOCOL_ERROR类型的连接错误（第5.4.1节）。
+
+CONTINUATION帧会按照第4.3节中的定义更改连接状态。
+
+CONTINUATION帧必须与流关联。如果接收到流标识符字段为0x0的CONTINUATION帧，则接收者务必以PROTOCOL_ERROR类型的连接错误（第5.4.1节）
+
+没有设置END_HEADERS标志的HEADERS，PUSH_PROMISE或CONTINUATION帧必须在CONTINUATION帧之前。观察到违反此规则的收件人必须以PROTOCOL_ERROR类型的连接错误（第5.4.1节）进行响应。
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+6.10.  CONTINUATION
+
+   The CONTINUATION frame (type=0x9) is used to continue a sequence of
+   header block fragments (Section 4.3).  Any number of CONTINUATION
+   frames can be sent, as long as the preceding frame is on the same
+   stream and is a HEADERS, PUSH_PROMISE, or CONTINUATION frame without
+   the END_HEADERS flag set.
+
+    +---------------------------------------------------------------+
+    |                   Header Block Fragment (*)                 ...
+    +---------------------------------------------------------------+
+
+                   Figure 15: CONTINUATION Frame Payload
+
+   The CONTINUATION frame payload contains a header block fragment
+   (Section 4.3).
+
+   The CONTINUATION frame defines the following flag:
+
+   END_HEADERS (0x4):  When set, bit 2 indicates that this frame ends a
+      header block (Section 4.3).
+
+      If the END_HEADERS bit is not set, this frame MUST be followed by
+      another CONTINUATION frame.  A receiver MUST treat the receipt of
+      any other type of frame or a frame on a different stream as a
+      connection error (Section 5.4.1) of type PROTOCOL_ERROR.
+
+   The CONTINUATION frame changes the connection state as defined in
+   Section 4.3.
+
+   CONTINUATION frames MUST be associated with a stream.  If a
+   CONTINUATION frame is received whose stream identifier field is 0x0,
+   the recipient MUST respond with a connection error (Section 5.4.1) of
+   type PROTOCOL_ERROR.
+
+   A CONTINUATION frame MUST be preceded by a HEADERS, PUSH_PROMISE or
+   CONTINUATION frame without the END_HEADERS flag set.  A recipient
+   that observes violation of this rule MUST respond with a connection
+   error (Section 5.4.1) of type PROTOCOL_ERROR.
+
+</code>
+</pre>
+</details>
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+7.  Error Codes
+
+   Error codes are 32-bit fields that are used in RST_STREAM and GOAWAY
+   frames to convey the reasons for the stream or connection error.
+
+   Error codes share a common code space.  Some error codes apply only
+   to either streams or the entire connection and have no defined
+   semantics in the other context.
+
+   The following error codes are defined:
+
+   NO_ERROR (0x0):  The associated condition is not a result of an
+      error.  For example, a GOAWAY might include this code to indicate
+      graceful shutdown of a connection.
+
+   PROTOCOL_ERROR (0x1):  The endpoint detected an unspecific protocol
+      error.  This error is for use when a more specific error code is
+      not available.
+
+   INTERNAL_ERROR (0x2):  The endpoint encountered an unexpected
+      internal error.
+
+   FLOW_CONTROL_ERROR (0x3):  The endpoint detected that its peer
+      violated the flow-control protocol.
+
+   SETTINGS_TIMEOUT (0x4):  The endpoint sent a SETTINGS frame but did
+      not receive a response in a timely manner.  See Section 6.5.3
+      ("Settings Synchronization").
+
+   STREAM_CLOSED (0x5):  The endpoint received a frame after a stream
+      was half-closed.
+
+   FRAME_SIZE_ERROR (0x6):  The endpoint received a frame with an
+      invalid size.
+
+   REFUSED_STREAM (0x7):  The endpoint refused the stream prior to
+      performing any application processing (see Section 8.1.4 for
+      details).
+
+   CANCEL (0x8):  Used by the endpoint to indicate that the stream is no
+      longer needed.
+
+   COMPRESSION_ERROR (0x9):  The endpoint is unable to maintain the
+      header compression context for the connection.
+
+   CONNECT_ERROR (0xa):  The connection established in response to a
+      CONNECT request (Section 8.3) was reset or abnormally closed.
+
+   ENHANCE_YOUR_CALM (0xb):  The endpoint detected that its peer is
+      exhibiting a behavior that might be generating excessive load.
+
+   INADEQUATE_SECURITY (0xc):  The underlying transport has properties
+      that do not meet minimum security requirements (see Section 9.2).
+
+   HTTP_1_1_REQUIRED (0xd):  The endpoint requires that HTTP/1.1 be used
+      instead of HTTP/2.
+
+   Unknown or unsupported error codes MUST NOT trigger any special
+   behavior.  These MAY be treated by an implementation as being
+   equivalent to INTERNAL_ERROR.
+
+</code>
+</pre>
+</details>
+
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+8.  HTTP Message Exchanges
+
+   HTTP/2 is intended to be as compatible as possible with current uses
+   of HTTP.  This means that, from the application perspective, the
+   features of the protocol are largely unchanged.  To achieve this, all
+   request and response semantics are preserved, although the syntax of
+   conveying those semantics has changed.
+
+   Thus, the specification and requirements of HTTP/1.1 Semantics and
+   Content [RFC7231], Conditional Requests [RFC7232], Range Requests
+   [RFC7233], Caching [RFC7234], and Authentication [RFC7235] are
+   applicable to HTTP/2.  Selected portions of HTTP/1.1 Message Syntax
+   and Routing [RFC7230], such as the HTTP and HTTPS URI schemes, are
+   also applicable in HTTP/2, but the expression of those semantics for
+   this protocol are defined in the sections below.
+
+</code>
+</pre>
+</details>
+
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+8.1.  HTTP Request/Response Exchange
+
+   A client sends an HTTP request on a new stream, using a previously
+   unused stream identifier (Section 5.1.1).  A server sends an HTTP
+   response on the same stream as the request.
+
+   An HTTP message (request or response) consists of:
+
+   1.  for a response only, zero or more HEADERS frames (each followed
+       by zero or more CONTINUATION frames) containing the message
+       headers of informational (1xx) HTTP responses (see [RFC7230],
+       Section 3.2 and [RFC7231], Section 6.2),
+
+   2.  one HEADERS frame (followed by zero or more CONTINUATION frames)
+       containing the message headers (see [RFC7230], Section 3.2),
+
+   3.  zero or more DATA frames containing the payload body (see
+       [RFC7230], Section 3.3), and
+
+   4.  optionally, one HEADERS frame, followed by zero or more
+       CONTINUATION frames containing the trailer-part, if present (see
+       [RFC7230], Section 4.1.2).
+
+   The last frame in the sequence bears an END_STREAM flag, noting that
+   a HEADERS frame bearing the END_STREAM flag can be followed by
+   CONTINUATION frames that carry any remaining portions of the header
+   block.
+
+   Other frames (from any stream) MUST NOT occur between the HEADERS
+   frame and any CONTINUATION frames that might follow.
+
+   HTTP/2 uses DATA frames to carry message payloads.  The "chunked"
+   transfer encoding defined in Section 4.1 of [RFC7230] MUST NOT be
+   used in HTTP/2.
+
+   Trailing header fields are carried in a header block that also
+   terminates the stream.  Such a header block is a sequence starting
+   with a HEADERS frame, followed by zero or more CONTINUATION frames,
+   where the HEADERS frame bears an END_STREAM flag.  Header blocks
+   after the first that do not terminate the stream are not part of an
+   HTTP request or response.
+
+   A HEADERS frame (and associated CONTINUATION frames) can only appear
+   at the start or end of a stream.  An endpoint that receives a HEADERS
+   frame without the END_STREAM flag set after receiving a final (non-
+   informational) status code MUST treat the corresponding request or
+   response as malformed (Section 8.1.2.6).
+
+   An HTTP request/response exchange fully consumes a single stream.  A
+   request starts with the HEADERS frame that puts the stream into an
+   "open" state.  The request ends with a frame bearing END_STREAM,
+   which causes the stream to become "half-closed (local)" for the
+   client and "half-closed (remote)" for the server.  A response starts
+   with a HEADERS frame and ends with a frame bearing END_STREAM, which
+   places the stream in the "closed" state.
+
+   An HTTP response is complete after the server sends -- or the client
+   receives -- a frame with the END_STREAM flag set (including any
+   CONTINUATION frames needed to complete a header block).  A server can
+   send a complete response prior to the client sending an entire
+   request if the response does not depend on any portion of the request
+   that has not been sent and received.  When this is true, a server MAY
+   request that the client abort transmission of a request without error
+   by sending a RST_STREAM with an error code of NO_ERROR after sending
+   a complete response (i.e., a frame with the END_STREAM flag).
+   Clients MUST NOT discard responses as a result of receiving such a
+   RST_STREAM, though clients can always discard responses at their
+   discretion for other reasons.
+
+</code>
+</pre>
+</details>
+
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+8.1.1.  Upgrading from HTTP/2
+
+   HTTP/2 removes support for the 101 (Switching Protocols)
+   informational status code ([RFC7231], Section 6.2.2).
+
+   The semantics of 101 (Switching Protocols) aren't applicable to a
+   multiplexed protocol.  Alternative protocols are able to use the same
+   mechanisms that HTTP/2 uses to negotiate their use (see Section 3).
+
+</code>
+</pre>
+</details>
+
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+8.1.2.  HTTP Header Fields
+
+   HTTP header fields carry information as a series of key-value pairs.
+   For a listing of registered HTTP headers, see the "Message Header
+   Field" registry maintained at <https://www.iana.org/assignments/
+   message-headers>.
+
+   Just as in HTTP/1.x, header field names are strings of ASCII
+   characters that are compared in a case-insensitive fashion.  However,
+   header field names MUST be converted to lowercase prior to their
+   encoding in HTTP/2.  A request or response containing uppercase
+   header field names MUST be treated as malformed (Section 8.1.2.6).
+
+</code>
+</pre>
+</details>
+
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+8.1.2.1.  Pseudo-Header Fields
+
+   While HTTP/1.x used the message start-line (see [RFC7230],
+   Section 3.1) to convey the target URI, the method of the request, and
+   the status code for the response, HTTP/2 uses special pseudo-header
+   fields beginning with ':' character (ASCII 0x3a) for this purpose.
+
+   Pseudo-header fields are not HTTP header fields.  Endpoints MUST NOT
+   generate pseudo-header fields other than those defined in this
+   document.
+
+   Pseudo-header fields are only valid in the context in which they are
+   defined.  Pseudo-header fields defined for requests MUST NOT appear
+   in responses; pseudo-header fields defined for responses MUST NOT
+   appear in requests.  Pseudo-header fields MUST NOT appear in
+   trailers.  Endpoints MUST treat a request or response that contains
+   undefined or invalid pseudo-header fields as malformed
+   (Section 8.1.2.6).
+
+   All pseudo-header fields MUST appear in the header block before
+   regular header fields.  Any request or response that contains a
+   pseudo-header field that appears in a header block after a regular
+   header field MUST be treated as malformed (Section 8.1.2.6).
+
+</code>
+</pre>
+</details>
+
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+8.1.2.2.  Connection-Specific Header Fields
+
+   HTTP/2 does not use the Connection header field to indicate
+   connection-specific header fields; in this protocol, connection-
+   specific metadata is conveyed by other means.  An endpoint MUST NOT
+   generate an HTTP/2 message containing connection-specific header
+   fields; any message containing connection-specific header fields MUST
+   be treated as malformed (Section 8.1.2.6).
+
+   The only exception to this is the TE header field, which MAY be
+   present in an HTTP/2 request; when it is, it MUST NOT contain any
+   value other than "trailers".
+
+   This means that an intermediary transforming an HTTP/1.x message to
+   HTTP/2 will need to remove any header fields nominated by the
+   Connection header field, along with the Connection header field
+   itself.  Such intermediaries SHOULD also remove other connection-
+   specific header fields, such as Keep-Alive, Proxy-Connection,
+   Transfer-Encoding, and Upgrade, even if they are not nominated by the
+   Connection header field.
+
+      Note: HTTP/2 purposefully does not support upgrade to another
+      protocol.  The handshake methods described in Section 3 are
+      believed sufficient to negotiate the use of alternative protocols.
+
+</code>
+</pre>
+</details>
+
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+8.1.2.3.  Request Pseudo-Header Fields
+
+   The following pseudo-header fields are defined for HTTP/2 requests:
+
+   o  The ":method" pseudo-header field includes the HTTP method
+      ([RFC7231], Section 4).
+
+   o  The ":scheme" pseudo-header field includes the scheme portion of
+      the target URI ([RFC3986], Section 3.1).
+
+      ":scheme" is not restricted to "http" and "https" schemed URIs.  A
+      proxy or gateway can translate requests for non-HTTP schemes,
+      enabling the use of HTTP to interact with non-HTTP services.
+
+   o  The ":authority" pseudo-header field includes the authority
+      portion of the target URI ([RFC3986], Section 3.2).  The authority
+      MUST NOT include the deprecated "userinfo" subcomponent for "http"
+      or "https" schemed URIs.
+
+      To ensure that the HTTP/1.1 request line can be reproduced
+      accurately, this pseudo-header field MUST be omitted when
+      translating from an HTTP/1.1 request that has a request target in
+      origin or asterisk form (see [RFC7230], Section 5.3).  Clients
+      that generate HTTP/2 requests directly SHOULD use the ":authority"
+      pseudo-header field instead of the Host header field.  An
+      intermediary that converts an HTTP/2 request to HTTP/1.1 MUST
+      create a Host header field if one is not present in a request by
+      copying the value of the ":authority" pseudo-header field.
+
+   o  The ":path" pseudo-header field includes the path and query parts
+      of the target URI (the "path-absolute" production and optionally a
+      '?' character followed by the "query" production (see Sections 3.3
+      and 3.4 of [RFC3986]).  A request in asterisk form includes the
+      value '*' for the ":path" pseudo-header field.
+
+      This pseudo-header field MUST NOT be empty for "http" or "https"
+      URIs; "http" or "https" URIs that do not contain a path component
+      MUST include a value of '/'.  The exception to this rule is an
+      OPTIONS request for an "http" or "https" URI that does not include
+      a path component; these MUST include a ":path" pseudo-header field
+      with a value of '*' (see [RFC7230], Section 5.3.4).
+
+   All HTTP/2 requests MUST include exactly one valid value for the
+   ":method", ":scheme", and ":path" pseudo-header fields, unless it is
+   a CONNECT request (Section 8.3).  An HTTP request that omits
+   mandatory pseudo-header fields is malformed (Section 8.1.2.6).
+
+   HTTP/2 does not define a way to carry the version identifier that is
+   included in the HTTP/1.1 request line.
+
+</code>
+</pre>
+</details>
+
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+8.1.2.4.  Response Pseudo-Header Fields
+
+   For HTTP/2 responses, a single ":status" pseudo-header field is
+   defined that carries the HTTP status code field (see [RFC7231],
+   Section 6).  This pseudo-header field MUST be included in all
+   responses; otherwise, the response is malformed (Section 8.1.2.6).
+
+   HTTP/2 does not define a way to carry the version or reason phrase
+   that is included in an HTTP/1.1 status line.
+
+</code>
+</pre>
+</details>
+
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+8.1.2.5.  Compressing the Cookie Header Field
+
+   The Cookie header field [COOKIE] uses a semi-colon (";") to delimit
+   cookie-pairs (or "crumbs").  This header field doesn't follow the
+   list construction rules in HTTP (see [RFC7230], Section 3.2.2), which
+   prevents cookie-pairs from being separated into different name-value
+   pairs.  This can significantly reduce compression efficiency as
+   individual cookie-pairs are updated.
+
+   To allow for better compression efficiency, the Cookie header field
+   MAY be split into separate header fields, each with one or more
+   cookie-pairs.  If there are multiple Cookie header fields after
+   decompression, these MUST be concatenated into a single octet string
+   using the two-octet delimiter of 0x3B, 0x20 (the ASCII string "; ")
+   before being passed into a non-HTTP/2 context, such as an HTTP/1.1
+   connection, or a generic HTTP server application.
+
+   Therefore, the following two lists of Cookie header fields are
+   semantically equivalent.
+
+     cookie: a=b; c=d; e=f
+
+     cookie: a=b
+     cookie: c=d
+     cookie: e=f
+
+</code>
+</pre>
+</details>
+
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+8.1.2.6.  Malformed Requests and Responses
+
+   A malformed request or response is one that is an otherwise valid
+   sequence of HTTP/2 frames but is invalid due to the presence of
+   extraneous frames, prohibited header fields, the absence of mandatory
+   header fields, or the inclusion of uppercase header field names.
+
+   A request or response that includes a payload body can include a
+   content-length header field.  A request or response is also malformed
+   if the value of a content-length header field does not equal the sum
+   of the DATA frame payload lengths that form the body.  A response
+   that is defined to have no payload, as described in [RFC7230],
+   Section 3.3.2, can have a non-zero content-length header field, even
+   though no content is included in DATA frames.
+
+   Intermediaries that process HTTP requests or responses (i.e., any
+   intermediary not acting as a tunnel) MUST NOT forward a malformed
+   request or response.  Malformed requests or responses that are
+   detected MUST be treated as a stream error (Section 5.4.2) of type
+   PROTOCOL_ERROR.
+
+   For malformed requests, a server MAY send an HTTP response prior to
+   closing or resetting the stream.  Clients MUST NOT accept a malformed
+   response.  Note that these requirements are intended to protect
+   against several types of common attacks against HTTP; they are
+   deliberately strict because being permissive can expose
+   implementations to these vulnerabilities.
+
+</code>
+</pre>
+</details>
+
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+8.1.3.  Examples
+
+   This section shows HTTP/1.1 requests and responses, with
+   illustrations of equivalent HTTP/2 requests and responses.
+
+   An HTTP GET request includes request header fields and no payload
+   body and is therefore transmitted as a single HEADERS frame, followed
+   by zero or more CONTINUATION frames containing the serialized block
+   of request header fields.  The HEADERS frame in the following has
+   both the END_HEADERS and END_STREAM flags set; no CONTINUATION frames
+   are sent.
+
+     GET /resource HTTP/1.1           HEADERS
+     Host: example.org          ==>     + END_STREAM
+     Accept: image/jpeg                 + END_HEADERS
+                                          :method = GET
+                                          :scheme = https
+                                          :path = /resource
+                                          host = example.org
+                                          accept = image/jpeg
+
+   Similarly, a response that includes only response header fields is
+   transmitted as a HEADERS frame (again, followed by zero or more
+   CONTINUATION frames) containing the serialized block of response
+   header fields.
+
+     HTTP/1.1 304 Not Modified        HEADERS
+     ETag: "xyzzy"              ==>     + END_STREAM
+     Expires: Thu, 23 Jan ...           + END_HEADERS
+                                          :status = 304
+                                          etag = "xyzzy"
+                                          expires = Thu, 23 Jan ...
+
+   An HTTP POST request that includes request header fields and payload
+   data is transmitted as one HEADERS frame, followed by zero or more
+   CONTINUATION frames containing the request header fields, followed by
+   one or more DATA frames, with the last CONTINUATION (or HEADERS)
+   frame having the END_HEADERS flag set and the final DATA frame having
+   the END_STREAM flag set:
+
+     POST /resource HTTP/1.1          HEADERS
+     Host: example.org          ==>     - END_STREAM
+     Content-Type: image/jpeg           - END_HEADERS
+     Content-Length: 123                  :method = POST
+                                          :path = /resource
+     {binary data}                        :scheme = https
+
+                                      CONTINUATION
+                                        + END_HEADERS
+                                          content-type = image/jpeg
+                                          host = example.org
+                                          content-length = 123
+
+                                      DATA
+                                        + END_STREAM
+                                      {binary data}
+
+   Note that data contributing to any given header field could be spread
+   between header block fragments.  The allocation of header fields to
+   frames in this example is illustrative only.
+
+   A response that includes header fields and payload data is
+   transmitted as a HEADERS frame, followed by zero or more CONTINUATION
+   frames, followed by one or more DATA frames, with the last DATA frame
+   in the sequence having the END_STREAM flag set:
+
+     HTTP/1.1 200 OK                  HEADERS
+     Content-Type: image/jpeg   ==>     - END_STREAM
+     Content-Length: 123                + END_HEADERS
+                                          :status = 200
+     {binary data}                        content-type = image/jpeg
+                                          content-length = 123
+
+                                      DATA
+                                        + END_STREAM
+                                      {binary data}
+
+   An informational response using a 1xx status code other than 101 is
+   transmitted as a HEADERS frame, followed by zero or more CONTINUATION
+   frames.
+
+   Trailing header fields are sent as a header block after both the
+   request or response header block and all the DATA frames have been
+   sent.  The HEADERS frame starting the trailers header block has the
+   END_STREAM flag set.
+
+   The following example includes both a 100 (Continue) status code,
+   which is sent in response to a request containing a "100-continue"
+   token in the Expect header field, and trailing header fields:
+
+     HTTP/1.1 100 Continue            HEADERS
+     Extension-Field: bar       ==>     - END_STREAM
+                                        + END_HEADERS
+                                          :status = 100
+                                          extension-field = bar
+
+     HTTP/1.1 200 OK                  HEADERS
+     Content-Type: image/jpeg   ==>     - END_STREAM
+     Transfer-Encoding: chunked         + END_HEADERS
+     Trailer: Foo                         :status = 200
+                                          content-length = 123
+     123                                  content-type = image/jpeg
+     {binary data}                        trailer = Foo
+     0
+     Foo: bar                         DATA
+                                        - END_STREAM
+                                      {binary data}
+
+                                      HEADERS
+                                        + END_STREAM
+                                        + END_HEADERS
+                                          foo = bar
+
+</code>
+</pre>
+</details>
+
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+8.1.4.  Request Reliability Mechanisms in HTTP/2
+
+   In HTTP/1.1, an HTTP client is unable to retry a non-idempotent
+   request when an error occurs because there is no means to determine
+   the nature of the error.  It is possible that some server processing
+   occurred prior to the error, which could result in undesirable
+   effects if the request were reattempted.
+
+   HTTP/2 provides two mechanisms for providing a guarantee to a client
+   that a request has not been processed:
+
+   o  The GOAWAY frame indicates the highest stream number that might
+      have been processed.  Requests on streams with higher numbers are
+      therefore guaranteed to be safe to retry.
+
+   o  The REFUSED_STREAM error code can be included in a RST_STREAM
+      frame to indicate that the stream is being closed prior to any
+      processing having occurred.  Any request that was sent on the
+      reset stream can be safely retried.
+
+   Requests that have not been processed have not failed; clients MAY
+   automatically retry them, even those with non-idempotent methods.
+
+   A server MUST NOT indicate that a stream has not been processed
+   unless it can guarantee that fact.  If frames that are on a stream
+   are passed to the application layer for any stream, then
+   REFUSED_STREAM MUST NOT be used for that stream, and a GOAWAY frame
+   MUST include a stream identifier that is greater than or equal to the
+   given stream identifier.
+
+   In addition to these mechanisms, the PING frame provides a way for a
+   client to easily test a connection.  Connections that remain idle can
+   become broken as some middleboxes (for instance, network address
+   translators or load balancers) silently discard connection bindings.
+   The PING frame allows a client to safely test whether a connection is
+   still active without sending a request.
+
+</code>
+</pre>
+</details>
+
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+8.2.  Server Push
+
+   HTTP/2 allows a server to pre-emptively send (or "push") responses
+   (along with corresponding "promised" requests) to a client in
+   association with a previous client-initiated request.  This can be
+   useful when the server knows the client will need to have those
+   responses available in order to fully process the response to the
+   original request.
+
+   A client can request that server push be disabled, though this is
+   negotiated for each hop independently.  The SETTINGS_ENABLE_PUSH
+   setting can be set to 0 to indicate that server push is disabled.
+
+   Promised requests MUST be cacheable (see [RFC7231], Section 4.2.3),
+   MUST be safe (see [RFC7231], Section 4.2.1), and MUST NOT include a
+   request body.  Clients that receive a promised request that is not
+   cacheable, that is not known to be safe, or that indicates the
+   presence of a request body MUST reset the promised stream with a
+   stream error (Section 5.4.2) of type PROTOCOL_ERROR.  Note this could
+   result in the promised stream being reset if the client does not
+   recognize a newly defined method as being safe.
+
+   Pushed responses that are cacheable (see [RFC7234], Section 3) can be
+   stored by the client, if it implements an HTTP cache.  Pushed
+   responses are considered successfully validated on the origin server
+   (e.g., if the "no-cache" cache response directive is present
+   ([RFC7234], Section 5.2.2)) while the stream identified by the
+   promised stream ID is still open.
+
+   Pushed responses that are not cacheable MUST NOT be stored by any
+   HTTP cache.  They MAY be made available to the application
+   separately.
+
+   The server MUST include a value in the ":authority" pseudo-header
+   field for which the server is authoritative (see Section 10.1).  A
+   client MUST treat a PUSH_PROMISE for which the server is not
+   authoritative as a stream error (Section 5.4.2) of type
+   PROTOCOL_ERROR.
+
+   An intermediary can receive pushes from the server and choose not to
+   forward them on to the client.  In other words, how to make use of
+   the pushed information is up to that intermediary.  Equally, the
+   intermediary might choose to make additional pushes to the client,
+   without any action taken by the server.
+
+   A client cannot push.  Thus, servers MUST treat the receipt of a
+   PUSH_PROMISE frame as a connection error (Section 5.4.1) of type
+   PROTOCOL_ERROR.  Clients MUST reject any attempt to change the
+   SETTINGS_ENABLE_PUSH setting to a value other than 0 by treating the
+   message as a connection error (Section 5.4.1) of type PROTOCOL_ERROR.
+
+</code>
+</pre>
+</details>
+
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+8.2.1.  Push Requests
+
+   Server push is semantically equivalent to a server responding to a
+   request; however, in this case, that request is also sent by the
+   server, as a PUSH_PROMISE frame.
+
+   The PUSH_PROMISE frame includes a header block that contains a
+   complete set of request header fields that the server attributes to
+   the request.  It is not possible to push a response to a request that
+   includes a request body.
+
+   Pushed responses are always associated with an explicit request from
+   the client.  The PUSH_PROMISE frames sent by the server are sent on
+   that explicit request's stream.  The PUSH_PROMISE frame also includes
+   a promised stream identifier, chosen from the stream identifiers
+   available to the server (see Section 5.1.1).
+
+   The header fields in PUSH_PROMISE and any subsequent CONTINUATION
+   frames MUST be a valid and complete set of request header fields
+   (Section 8.1.2.3).  The server MUST include a method in the ":method"
+   pseudo-header field that is safe and cacheable.  If a client receives
+   a PUSH_PROMISE that does not include a complete and valid set of
+   header fields or the ":method" pseudo-header field identifies a
+   method that is not safe, it MUST respond with a stream error
+   (Section 5.4.2) of type PROTOCOL_ERROR.
+
+   The server SHOULD send PUSH_PROMISE (Section 6.6) frames prior to
+   sending any frames that reference the promised responses.  This
+   avoids a race where clients issue requests prior to receiving any
+   PUSH_PROMISE frames.
+
+   For example, if the server receives a request for a document
+   containing embedded links to multiple image files and the server
+   chooses to push those additional images to the client, sending
+   PUSH_PROMISE frames before the DATA frames that contain the image
+   links ensures that the client is able to see that a resource will be
+   pushed before discovering embedded links.  Similarly, if the server
+   pushes responses referenced by the header block (for instance, in
+   Link header fields), sending a PUSH_PROMISE before sending the header
+   block ensures that clients do not request those resources.
+
+   PUSH_PROMISE frames MUST NOT be sent by the client.
+
+   PUSH_PROMISE frames can be sent by the server in response to any
+   client-initiated stream, but the stream MUST be in either the "open"
+   or "half-closed (remote)" state with respect to the server.
+   PUSH_PROMISE frames are interspersed with the frames that comprise a
+   response, though they cannot be interspersed with HEADERS and
+   CONTINUATION frames that comprise a single header block.
+
+   Sending a PUSH_PROMISE frame creates a new stream and puts the stream
+   into the "reserved (local)" state for the server and the "reserved
+   (remote)" state for the client.
+
+</code>
+</pre>
+</details>
+
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+8.2.2.  Push Responses
+
+   After sending the PUSH_PROMISE frame, the server can begin delivering
+   the pushed response as a response (Section 8.1.2.4) on a server-
+   initiated stream that uses the promised stream identifier.  The
+   server uses this stream to transmit an HTTP response, using the same
+   sequence of frames as defined in Section 8.1.  This stream becomes
+   "half-closed" to the client (Section 5.1) after the initial HEADERS
+   frame is sent.
+
+   Once a client receives a PUSH_PROMISE frame and chooses to accept the
+   pushed response, the client SHOULD NOT issue any requests for the
+   promised response until after the promised stream has closed.
+
+   If the client determines, for any reason, that it does not wish to
+   receive the pushed response from the server or if the server takes
+   too long to begin sending the promised response, the client can send
+   a RST_STREAM frame, using either the CANCEL or REFUSED_STREAM code
+   and referencing the pushed stream's identifier.
+
+   A client can use the SETTINGS_MAX_CONCURRENT_STREAMS setting to limit
+   the number of responses that can be concurrently pushed by a server.
+   Advertising a SETTINGS_MAX_CONCURRENT_STREAMS value of zero disables
+   server push by preventing the server from creating the necessary
+   streams.  This does not prohibit a server from sending PUSH_PROMISE
+   frames; clients need to reset any promised streams that are not
+   wanted.
+
+   Clients receiving a pushed response MUST validate that either the
+   server is authoritative (see Section 10.1) or the proxy that provided
+   the pushed response is configured for the corresponding request.  For
+   example, a server that offers a certificate for only the
+   "example.com" DNS-ID or Common Name is not permitted to push a
+   response for "https://www.example.org/doc".
+
+   The response for a PUSH_PROMISE stream begins with a HEADERS frame,
+   which immediately puts the stream into the "half-closed (remote)"
+   state for the server and "half-closed (local)" state for the client,
+   and ends with a frame bearing END_STREAM, which places the stream in
+   the "closed" state.
+
+      Note: The client never sends a frame with the END_STREAM flag for
+      a server push.
+
+</code>
+</pre>
+</details>
+
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+8.3.  The CONNECT Method
+
+   In HTTP/1.x, the pseudo-method CONNECT ([RFC7231], Section 4.3.6) is
+   used to convert an HTTP connection into a tunnel to a remote host.
+   CONNECT is primarily used with HTTP proxies to establish a TLS
+   session with an origin server for the purposes of interacting with
+   "https" resources.
+
+   In HTTP/2, the CONNECT method is used to establish a tunnel over a
+   single HTTP/2 stream to a remote host for similar purposes.  The HTTP
+   header field mapping works as defined in Section 8.1.2.3 ("Request
+   Pseudo-Header Fields"), with a few differences.  Specifically:
+
+   o  The ":method" pseudo-header field is set to "CONNECT".
+
+   o  The ":scheme" and ":path" pseudo-header fields MUST be omitted.
+
+   o  The ":authority" pseudo-header field contains the host and port to
+      connect to (equivalent to the authority-form of the request-target
+      of CONNECT requests (see [RFC7230], Section 5.3)).
+
+   A CONNECT request that does not conform to these restrictions is
+   malformed (Section 8.1.2.6).
+
+   A proxy that supports CONNECT establishes a TCP connection [TCP] to
+   the server identified in the ":authority" pseudo-header field.  Once
+   this connection is successfully established, the proxy sends a
+   HEADERS frame containing a 2xx series status code to the client, as
+   defined in [RFC7231], Section 4.3.6.
+
+   After the initial HEADERS frame sent by each peer, all subsequent
+   DATA frames correspond to data sent on the TCP connection.  The
+   payload of any DATA frames sent by the client is transmitted by the
+   proxy to the TCP server; data received from the TCP server is
+   assembled into DATA frames by the proxy.  Frame types other than DATA
+   or stream management frames (RST_STREAM, WINDOW_UPDATE, and PRIORITY)
+   MUST NOT be sent on a connected stream and MUST be treated as a
+   stream error (Section 5.4.2) if received.
+
+   The TCP connection can be closed by either peer.  The END_STREAM flag
+   on a DATA frame is treated as being equivalent to the TCP FIN bit.  A
+   client is expected to send a DATA frame with the END_STREAM flag set
+   after receiving a frame bearing the END_STREAM flag.  A proxy that
+   receives a DATA frame with the END_STREAM flag set sends the attached
+   data with the FIN bit set on the last TCP segment.  A proxy that
+   receives a TCP segment with the FIN bit set sends a DATA frame with
+   the END_STREAM flag set.  Note that the final TCP segment or DATA
+   frame could be empty.
+
+   A TCP connection error is signaled with RST_STREAM.  A proxy treats
+   any error in the TCP connection, which includes receiving a TCP
+   segment with the RST bit set, as a stream error (Section 5.4.2) of
+   type CONNECT_ERROR.  Correspondingly, a proxy MUST send a TCP segment
+   with the RST bit set if it detects an error with the stream or the
+   HTTP/2 connection.
+
+</code>
+</pre>
+</details>
+
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+9.  Additional HTTP Requirements/Considerations
+
+   This section outlines attributes of the HTTP protocol that improve
+   interoperability, reduce exposure to known security vulnerabilities,
+   or reduce the potential for implementation variation.
+
+
+</code>
+</pre>
+</details>
+
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+9.1.  Connection Management
+
+   HTTP/2 connections are persistent.  For best performance, it is
+   expected that clients will not close connections until it is
+   determined that no further communication with a server is necessary
+   (for example, when a user navigates away from a particular web page)
+   or until the server closes the connection.
+
+   Clients SHOULD NOT open more than one HTTP/2 connection to a given
+   host and port pair, where the host is derived from a URI, a selected
+   alternative service [ALT-SVC], or a configured proxy.
+
+   A client can create additional connections as replacements, either to
+   replace connections that are near to exhausting the available stream
+   identifier space (Section 5.1.1), to refresh the keying material for
+   a TLS connection, or to replace connections that have encountered
+   errors (Section 5.4.1).
+
+   A client MAY open multiple connections to the same IP address and TCP
+   port using different Server Name Indication [TLS-EXT] values or to
+   provide different TLS client certificates but SHOULD avoid creating
+   multiple connections with the same configuration.
+
+   Servers are encouraged to maintain open connections for as long as
+   possible but are permitted to terminate idle connections if
+   necessary.  When either endpoint chooses to close the transport-layer
+   TCP connection, the terminating endpoint SHOULD first send a GOAWAY
+   (Section 6.8) frame so that both endpoints can reliably determine
+   whether previously sent frames have been processed and gracefully
+   complete or terminate any necessary remaining tasks.
+
+
+</code>
+</pre>
+</details>
+
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+9.1.1.  Connection Reuse
+
+   Connections that are made to an origin server, either directly or
+   through a tunnel created using the CONNECT method (Section 8.3), MAY
+   be reused for requests with multiple different URI authority
+   components.  A connection can be reused as long as the origin server
+   is authoritative (Section 10.1).  For TCP connections without TLS,
+   this depends on the host having resolved to the same IP address.
+
+   For "https" resources, connection reuse additionally depends on
+   having a certificate that is valid for the host in the URI.  The
+   certificate presented by the server MUST satisfy any checks that the
+   client would perform when forming a new TLS connection for the host
+   in the URI.
+
+   An origin server might offer a certificate with multiple
+   "subjectAltName" attributes or names with wildcards, one of which is
+   valid for the authority in the URI.  For example, a certificate with
+   a "subjectAltName" of "*.example.com" might permit the use of the
+   same connection for requests to URIs starting with
+   "https://a.example.com/" and "https://b.example.com/".
+
+   In some deployments, reusing a connection for multiple origins can
+   result in requests being directed to the wrong origin server.  For
+   example, TLS termination might be performed by a middlebox that uses
+   the TLS Server Name Indication (SNI) [TLS-EXT] extension to select an
+   origin server.  This means that it is possible for clients to send
+   confidential information to servers that might not be the intended
+   target for the request, even though the server is otherwise
+   authoritative.
+
+   A server that does not wish clients to reuse connections can indicate
+   that it is not authoritative for a request by sending a 421
+   (Misdirected Request) status code in response to the request (see
+   Section 9.1.2).
+
+   A client that is configured to use a proxy over HTTP/2 directs
+   requests to that proxy through a single connection.  That is, all
+   requests sent via a proxy reuse the connection to the proxy.
+
+
+</code>
+</pre>
+</details>
+
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+9.1.2.  The 421 (Misdirected Request) Status Code
+
+   The 421 (Misdirected Request) status code indicates that the request
+   was directed at a server that is not able to produce a response.
+   This can be sent by a server that is not configured to produce
+   responses for the combination of scheme and authority that are
+   included in the request URI.
+
+   Clients receiving a 421 (Misdirected Request) response from a server
+   MAY retry the request -- whether the request method is idempotent or
+   not -- over a different connection.  This is possible if a connection
+   is reused (Section 9.1.1) or if an alternative service is selected
+   [ALT-SVC].
+
+   This status code MUST NOT be generated by proxies.
+
+   A 421 response is cacheable by default, i.e., unless otherwise
+   indicated by the method definition or explicit cache controls (see
+   Section 4.2.2 of [RFC7234]).
+
+
+</code>
+</pre>
+</details>
+
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+9.2.  Use of TLS Features
+
+   Implementations of HTTP/2 MUST use TLS version 1.2 [TLS12] or higher
+   for HTTP/2 over TLS.  The general TLS usage guidance in [TLSBCP]
+   SHOULD be followed, with some additional restrictions that are
+   specific to HTTP/2.
+
+   The TLS implementation MUST support the Server Name Indication (SNI)
+   [TLS-EXT] extension to TLS.  HTTP/2 clients MUST indicate the target
+   domain name when negotiating TLS.
+
+   Deployments of HTTP/2 that negotiate TLS 1.3 or higher need only
+   support and use the SNI extension; deployments of TLS 1.2 are subject
+   to the requirements in the following sections.  Implementations are
+   encouraged to provide defaults that comply, but it is recognized that
+   deployments are ultimately responsible for compliance.
+
+
+</code>
+</pre>
+</details>
+
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+9.2.1.  TLS 1.2 Features
+
+   This section describes restrictions on the TLS 1.2 feature set that
+   can be used with HTTP/2.  Due to deployment limitations, it might not
+   be possible to fail TLS negotiation when these restrictions are not
+   met.  An endpoint MAY immediately terminate an HTTP/2 connection that
+   does not meet these TLS requirements with a connection error
+   (Section 5.4.1) of type INADEQUATE_SECURITY.
+
+   A deployment of HTTP/2 over TLS 1.2 MUST disable compression.  TLS
+   compression can lead to the exposure of information that would not
+   otherwise be revealed [RFC3749].  Generic compression is unnecessary
+   since HTTP/2 provides compression features that are more aware of
+   context and therefore likely to be more appropriate for use for
+   performance, security, or other reasons.
+
+   A deployment of HTTP/2 over TLS 1.2 MUST disable renegotiation.  An
+   endpoint MUST treat a TLS renegotiation as a connection error
+   (Section 5.4.1) of type PROTOCOL_ERROR.  Note that disabling
+
+   renegotiation can result in long-lived connections becoming unusable
+   due to limits on the number of messages the underlying cipher suite
+   can encipher.
+
+   An endpoint MAY use renegotiation to provide confidentiality
+   protection for client credentials offered in the handshake, but any
+   renegotiation MUST occur prior to sending the connection preface.  A
+   server SHOULD request a client certificate if it sees a renegotiation
+   request immediately after establishing a connection.
+
+   This effectively prevents the use of renegotiation in response to a
+   request for a specific protected resource.  A future specification
+   might provide a way to support this use case.  Alternatively, a
+   server might use an error (Section 5.4) of type HTTP_1_1_REQUIRED to
+   request the client use a protocol that supports renegotiation.
+
+   Implementations MUST support ephemeral key exchange sizes of at least
+   2048 bits for cipher suites that use ephemeral finite field Diffie-
+   Hellman (DHE) [TLS12] and 224 bits for cipher suites that use
+   ephemeral elliptic curve Diffie-Hellman (ECDHE) [RFC4492].  Clients
+   MUST accept DHE sizes of up to 4096 bits.  Endpoints MAY treat
+   negotiation of key sizes smaller than the lower limits as a
+   connection error (Section 5.4.1) of type INADEQUATE_SECURITY.
+
+
+</code>
+</pre>
+</details>
+
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+9.2.2.  TLS 1.2 Cipher Suites
+
+   A deployment of HTTP/2 over TLS 1.2 SHOULD NOT use any of the cipher
+   suites that are listed in the cipher suite black list (Appendix A).
+
+   Endpoints MAY choose to generate a connection error (Section 5.4.1)
+   of type INADEQUATE_SECURITY if one of the cipher suites from the
+   black list is negotiated.  A deployment that chooses to use a black-
+   listed cipher suite risks triggering a connection error unless the
+   set of potential peers is known to accept that cipher suite.
+
+   Implementations MUST NOT generate this error in reaction to the
+   negotiation of a cipher suite that is not on the black list.
+   Consequently, when clients offer a cipher suite that is not on the
+   black list, they have to be prepared to use that cipher suite with
+   HTTP/2.
+
+   The black list includes the cipher suite that TLS 1.2 makes
+   mandatory, which means that TLS 1.2 deployments could have non-
+   intersecting sets of permitted cipher suites.  To avoid this problem
+   causing TLS handshake failures, deployments of HTTP/2 that use TLS
+   1.2 MUST support TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256 [TLS-ECDHE]
+   with the P-256 elliptic curve [FIPS186].
+
+   Note that clients might advertise support of cipher suites that are
+   on the black list in order to allow for connection to servers that do
+   not support HTTP/2.  This allows servers to select HTTP/1.1 with a
+   cipher suite that is on the HTTP/2 black list.  However, this can
+   result in HTTP/2 being negotiated with a black-listed cipher suite if
+   the application protocol and cipher suite are independently selected.
+
+</code>
+</pre>
+</details>
+
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+10.  Security Considerations
+
+10.1.  Server Authority
+
+   HTTP/2 relies on the HTTP/1.1 definition of authority for determining
+   whether a server is authoritative in providing a given response (see
+   [RFC7230], Section 9.1).  This relies on local name resolution for
+   the "http" URI scheme and the authenticated server identity for the
+   "https" scheme (see [RFC2818], Section 3).
+
+</code>
+</pre>
+</details>
+
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+10.2.  Cross-Protocol Attacks
+
+   In a cross-protocol attack, an attacker causes a client to initiate a
+   transaction in one protocol toward a server that understands a
+   different protocol.  An attacker might be able to cause the
+   transaction to appear as a valid transaction in the second protocol.
+   In combination with the capabilities of the web context, this can be
+   used to interact with poorly protected servers in private networks.
+
+   Completing a TLS handshake with an ALPN identifier for HTTP/2 can be
+   considered sufficient protection against cross-protocol attacks.
+   ALPN provides a positive indication that a server is willing to
+   proceed with HTTP/2, which prevents attacks on other TLS-based
+   protocols.
+
+   The encryption in TLS makes it difficult for attackers to control the
+   data that could be used in a cross-protocol attack on a cleartext
+   protocol.
+
+   The cleartext version of HTTP/2 has minimal protection against cross-
+   protocol attacks.  The connection preface (Section 3.5) contains a
+   string that is designed to confuse HTTP/1.1 servers, but no special
+   protection is offered for other protocols.  A server that is willing
+   to ignore parts of an HTTP/1.1 request containing an Upgrade header
+   field in addition to the client connection preface could be exposed
+   to a cross-protocol attack.
+
+</code>
+</pre>
+</details>
+
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+10.3.  Intermediary Encapsulation Attacks
+
+   The HTTP/2 header field encoding allows the expression of names that
+   are not valid field names in the Internet Message Syntax used by
+   HTTP/1.1.  Requests or responses containing invalid header field
+   names MUST be treated as malformed (Section 8.1.2.6).  An
+   intermediary therefore cannot translate an HTTP/2 request or response
+   containing an invalid field name into an HTTP/1.1 message.
+
+   Similarly, HTTP/2 allows header field values that are not valid.
+   While most of the values that can be encoded will not alter header
+   field parsing, carriage return (CR, ASCII 0xd), line feed (LF, ASCII
+   0xa), and the zero character (NUL, ASCII 0x0) might be exploited by
+   an attacker if they are translated verbatim.  Any request or response
+   that contains a character not permitted in a header field value MUST
+   be treated as malformed (Section 8.1.2.6).  Valid characters are
+   defined by the "field-content" ABNF rule in Section 3.2 of [RFC7230].
+
+</code>
+</pre>
+</details>
+
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+10.4.  Cacheability of Pushed Responses
+
+   Pushed responses do not have an explicit request from the client; the
+   request is provided by the server in the PUSH_PROMISE frame.
+
+   Caching responses that are pushed is possible based on the guidance
+   provided by the origin server in the Cache-Control header field.
+   However, this can cause issues if a single server hosts more than one
+   tenant.  For example, a server might offer multiple users each a
+   small portion of its URI space.
+
+   Where multiple tenants share space on the same server, that server
+   MUST ensure that tenants are not able to push representations of
+   resources that they do not have authority over.  Failure to enforce
+   this would allow a tenant to provide a representation that would be
+   served out of cache, overriding the actual representation that the
+   authoritative tenant provides.
+
+   Pushed responses for which an origin server is not authoritative (see
+   Section 10.1) MUST NOT be used or cached.
+
+</code>
+</pre>
+</details>
+
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+10.5.  Denial-of-Service Considerations
+
+   An HTTP/2 connection can demand a greater commitment of resources to
+   operate than an HTTP/1.1 connection.  The use of header compression
+   and flow control depend on a commitment of resources for storing a
+   greater amount of state.  Settings for these features ensure that
+   memory commitments for these features are strictly bounded.
+
+   The number of PUSH_PROMISE frames is not constrained in the same
+   fashion.  A client that accepts server push SHOULD limit the number
+   of streams it allows to be in the "reserved (remote)" state.  An
+   excessive number of server push streams can be treated as a stream
+   error (Section 5.4.2) of type ENHANCE_YOUR_CALM.
+
+   Processing capacity cannot be guarded as effectively as state
+   capacity.
+
+   The SETTINGS frame can be abused to cause a peer to expend additional
+   processing time.  This might be done by pointlessly changing SETTINGS
+   parameters, setting multiple undefined parameters, or changing the
+   same setting multiple times in the same frame.  WINDOW_UPDATE or
+   PRIORITY frames can be abused to cause an unnecessary waste of
+   resources.
+
+   Large numbers of small or empty frames can be abused to cause a peer
+   to expend time processing frame headers.  Note, however, that some
+   uses are entirely legitimate, such as the sending of an empty DATA or
+   CONTINUATION frame at the end of a stream.
+
+   Header compression also offers some opportunities to waste processing
+   resources; see Section 7 of [COMPRESSION] for more details on
+   potential abuses.
+
+   Limits in SETTINGS parameters cannot be reduced instantaneously,
+   which leaves an endpoint exposed to behavior from a peer that could
+   exceed the new limits.  In particular, immediately after establishing
+   a connection, limits set by a server are not known to clients and
+   could be exceeded without being an obvious protocol violation.
+
+   All these features -- i.e., SETTINGS changes, small frames, header
+   compression -- have legitimate uses.  These features become a burden
+   only when they are used unnecessarily or to excess.
+
+   An endpoint that doesn't monitor this behavior exposes itself to a
+   risk of denial-of-service attack.  Implementations SHOULD track the
+   use of these features and set limits on their use.  An endpoint MAY
+   treat activity that is suspicious as a connection error
+   (Section 5.4.1) of type ENHANCE_YOUR_CALM.
+
+</code>
+</pre>
+</details>
+
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+10.5.1.  Limits on Header Block Size
+
+   A large header block (Section 4.3) can cause an implementation to
+   commit a large amount of state.  Header fields that are critical for
+   routing can appear toward the end of a header block, which prevents
+   streaming of header fields to their ultimate destination.  This
+   ordering and other reasons, such as ensuring cache correctness, mean
+
+   that an endpoint might need to buffer the entire header block.  Since
+   there is no hard limit to the size of a header block, some endpoints
+   could be forced to commit a large amount of available memory for
+   header fields.
+
+   An endpoint can use the SETTINGS_MAX_HEADER_LIST_SIZE to advise peers
+   of limits that might apply on the size of header blocks.  This
+   setting is only advisory, so endpoints MAY choose to send header
+   blocks that exceed this limit and risk having the request or response
+   being treated as malformed.  This setting is specific to a
+   connection, so any request or response could encounter a hop with a
+   lower, unknown limit.  An intermediary can attempt to avoid this
+   problem by passing on values presented by different peers, but they
+   are not obligated to do so.
+
+   A server that receives a larger header block than it is willing to
+   handle can send an HTTP 431 (Request Header Fields Too Large) status
+   code [RFC6585].  A client can discard responses that it cannot
+   process.  The header block MUST be processed to ensure a consistent
+   connection state, unless the connection is closed.
+
+</code>
+</pre>
+</details>
+
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+10.5.2.  CONNECT Issues
+
+   The CONNECT method can be used to create disproportionate load on an
+   proxy, since stream creation is relatively inexpensive when compared
+   to the creation and maintenance of a TCP connection.  A proxy might
+   also maintain some resources for a TCP connection beyond the closing
+   of the stream that carries the CONNECT request, since the outgoing
+   TCP connection remains in the TIME_WAIT state.  Therefore, a proxy
+   cannot rely on SETTINGS_MAX_CONCURRENT_STREAMS alone to limit the
+   resources consumed by CONNECT requests.
+
+</code>
+</pre>
+</details>
+
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+10.6.  Use of Compression
+
+   Compression can allow an attacker to recover secret data when it is
+   compressed in the same context as data under attacker control.
+   HTTP/2 enables compression of header fields (Section 4.3); the
+   following concerns also apply to the use of HTTP compressed content-
+   codings ([RFC7231], Section 3.1.2.1).
+
+   There are demonstrable attacks on compression that exploit the
+   characteristics of the web (e.g., [BREACH]).  The attacker induces
+   multiple requests containing varying plaintext, observing the length
+   of the resulting ciphertext in each, which reveals a shorter length
+   when a guess about the secret is correct.
+
+   Implementations communicating on a secure channel MUST NOT compress
+   content that includes both confidential and attacker-controlled data
+   unless separate compression dictionaries are used for each source of
+   data.  Compression MUST NOT be used if the source of data cannot be
+   reliably determined.  Generic stream compression, such as that
+   provided by TLS, MUST NOT be used with HTTP/2 (see Section 9.2).
+
+   Further considerations regarding the compression of header fields are
+   described in [COMPRESSION].
+
+</code>
+</pre>
+</details>
+
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+10.7.  Use of Padding
+
+   Padding within HTTP/2 is not intended as a replacement for general
+   purpose padding, such as might be provided by TLS [TLS12].  Redundant
+   padding could even be counterproductive.  Correct application can
+   depend on having specific knowledge of the data that is being padded.
+
+   To mitigate attacks that rely on compression, disabling or limiting
+   compression might be preferable to padding as a countermeasure.
+
+   Padding can be used to obscure the exact size of frame content and is
+   provided to mitigate specific attacks within HTTP, for example,
+   attacks where compressed content includes both attacker-controlled
+   plaintext and secret data (e.g., [BREACH]).
+
+   Use of padding can result in less protection than might seem
+   immediately obvious.  At best, padding only makes it more difficult
+   for an attacker to infer length information by increasing the number
+   of frames an attacker has to observe.  Incorrectly implemented
+   padding schemes can be easily defeated.  In particular, randomized
+   padding with a predictable distribution provides very little
+   protection; similarly, padding payloads to a fixed size exposes
+   information as payload sizes cross the fixed-sized boundary, which
+   could be possible if an attacker can control plaintext.
+
+   Intermediaries SHOULD retain padding for DATA frames but MAY drop
+   padding for HEADERS and PUSH_PROMISE frames.  A valid reason for an
+   intermediary to change the amount of padding of frames is to improve
+   the protections that padding provides.
+
+</code>
+</pre>
+</details>
+
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+10.8.  Privacy Considerations
+
+   Several characteristics of HTTP/2 provide an observer an opportunity
+   to correlate actions of a single client or server over time.  These
+   include the value of settings, the manner in which flow-control
+   windows are managed, the way priorities are allocated to streams, the
+   timing of reactions to stimulus, and the handling of any features
+   that are controlled by settings.
+
+   As far as these create observable differences in behavior, they could
+   be used as a basis for fingerprinting a specific client, as defined
+   in Section 1.8 of [HTML5].
+
+   HTTP/2's preference for using a single TCP connection allows
+   correlation of a user's activity on a site.  Reusing connections for
+   different origins allows tracking across those origins.
+
+   Because the PING and SETTINGS frames solicit immediate responses,
+   they can be used by an endpoint to measure latency to their peer.
+   This might have privacy implications in certain scenarios.
+
+</code>
+</pre>
+</details>
+
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+11.  IANA Considerations
+
+   A string for identifying HTTP/2 is entered into the "Application-
+   Layer Protocol Negotiation (ALPN) Protocol IDs" registry established
+   in [TLS-ALPN].
+
+   This document establishes a registry for frame types, settings, and
+   error codes.  These new registries appear in the new "Hypertext
+   Transfer Protocol version 2 (HTTP/2) Parameters" section.
+
+   This document registers the HTTP2-Settings header field for use in
+   HTTP; it also registers the 421 (Misdirected Request) status code.
+
+   This document registers the "PRI" method for use in HTTP to avoid
+   collisions with the connection preface (Section 3.5).
+
+</code>
+</pre>
+</details>
+
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+11.1.  Registration of HTTP/2 Identification Strings
+
+   This document creates two registrations for the identification of
+   HTTP/2 (see Section 3.3) in the "Application-Layer Protocol
+   Negotiation (ALPN) Protocol IDs" registry established in [TLS-ALPN].
+
+   The "h2" string identifies HTTP/2 when used over TLS:
+
+   Protocol:  HTTP/2 over TLS
+
+   Identification Sequence:  0x68 0x32 ("h2")
+
+   Specification:  This document
+
+   The "h2c" string identifies HTTP/2 when used over cleartext TCP:
+
+   Protocol:  HTTP/2 over TCP
+
+   Identification Sequence:  0x68 0x32 0x63 ("h2c")
+
+   Specification:  This document
+
+</code>
+</pre>
+</details>
+
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+11.2.  Frame Type Registry
+
+   This document establishes a registry for HTTP/2 frame type codes.
+   The "HTTP/2 Frame Type" registry manages an 8-bit space.  The "HTTP/2
+   Frame Type" registry operates under either of the "IETF Review" or
+   "IESG Approval" policies [RFC5226] for values between 0x00 and 0xef,
+   with values between 0xf0 and 0xff being reserved for Experimental
+   Use.
+
+   New entries in this registry require the following information:
+
+   Frame Type:  A name or label for the frame type.
+
+   Code:  The 8-bit code assigned to the frame type.
+
+   Specification:  A reference to a specification that includes a
+      description of the frame layout, its semantics, and flags that the
+      frame type uses, including any parts of the frame that are
+      conditionally present based on the value of flags.
+
+   The entries in the following table are registered by this document.
+
+   +---------------+------+--------------+
+   | Frame Type    | Code | Section      |
+   +---------------+------+--------------+
+   | DATA          | 0x0  | Section 6.1  |
+   | HEADERS       | 0x1  | Section 6.2  |
+   | PRIORITY      | 0x2  | Section 6.3  |
+   | RST_STREAM    | 0x3  | Section 6.4  |
+   | SETTINGS      | 0x4  | Section 6.5  |
+   | PUSH_PROMISE  | 0x5  | Section 6.6  |
+   | PING          | 0x6  | Section 6.7  |
+   | GOAWAY        | 0x7  | Section 6.8  |
+   | WINDOW_UPDATE | 0x8  | Section 6.9  |
+   | CONTINUATION  | 0x9  | Section 6.10 |
+   +---------------+------+--------------+
+
+</code>
+</pre>
+</details>
+
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+11.3.  Settings Registry
+
+   This document establishes a registry for HTTP/2 settings.  The
+   "HTTP/2 Settings" registry manages a 16-bit space.  The "HTTP/2
+   Settings" registry operates under the "Expert Review" policy
+   [RFC5226] for values in the range from 0x0000 to 0xefff, with values
+   between and 0xf000 and 0xffff being reserved for Experimental Use.
+
+   New registrations are advised to provide the following information:
+
+   Name:  A symbolic name for the setting.  Specifying a setting name is
+      optional.
+
+   Code:  The 16-bit code assigned to the setting.
+
+   Initial Value:  An initial value for the setting.
+
+   Specification:  An optional reference to a specification that
+      describes the use of the setting.
+
+   The entries in the following table are registered by this document.
+
+   +------------------------+------+---------------+---------------+
+   | Name                   | Code | Initial Value | Specification |
+   +------------------------+------+---------------+---------------+
+   | HEADER_TABLE_SIZE      | 0x1  | 4096          | Section 6.5.2 |
+   | ENABLE_PUSH            | 0x2  | 1             | Section 6.5.2 |
+   | MAX_CONCURRENT_STREAMS | 0x3  | (infinite)    | Section 6.5.2 |
+   | INITIAL_WINDOW_SIZE    | 0x4  | 65535         | Section 6.5.2 |
+   | MAX_FRAME_SIZE         | 0x5  | 16384         | Section 6.5.2 |
+   | MAX_HEADER_LIST_SIZE   | 0x6  | (infinite)    | Section 6.5.2 |
+   +------------------------+------+---------------+---------------+
+
+</code>
+</pre>
+</details>
+
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+11.4.  Error Code Registry
+
+   This document establishes a registry for HTTP/2 error codes.  The
+   "HTTP/2 Error Code" registry manages a 32-bit space.  The "HTTP/2
+   Error Code" registry operates under the "Expert Review" policy
+   [RFC5226].
+
+   Registrations for error codes are required to include a description
+   of the error code.  An expert reviewer is advised to examine new
+   registrations for possible duplication with existing error codes.
+   Use of existing registrations is to be encouraged, but not mandated.
+
+   New registrations are advised to provide the following information:
+
+   Name:  A name for the error code.  Specifying an error code name is
+      optional.
+
+   Code:  The 32-bit error code value.
+
+   Description:  A brief description of the error code semantics, longer
+      if no detailed specification is provided.
+
+   Specification:  An optional reference for a specification that
+      defines the error code.
+
+   The entries in the following table are registered by this document.
+
+   +---------------------+------+----------------------+---------------+
+   | Name                | Code | Description          | Specification |
+   +---------------------+------+----------------------+---------------+
+   | NO_ERROR            | 0x0  | Graceful shutdown    | Section 7     |
+   | PROTOCOL_ERROR      | 0x1  | Protocol error       | Section 7     |
+   |                     |      | detected             |               |
+   | INTERNAL_ERROR      | 0x2  | Implementation fault | Section 7     |
+   | FLOW_CONTROL_ERROR  | 0x3  | Flow-control limits  | Section 7     |
+   |                     |      | exceeded             |               |
+   | SETTINGS_TIMEOUT    | 0x4  | Settings not         | Section 7     |
+   |                     |      | acknowledged         |               |
+   | STREAM_CLOSED       | 0x5  | Frame received for   | Section 7     |
+   |                     |      | closed stream        |               |
+   | FRAME_SIZE_ERROR    | 0x6  | Frame size incorrect | Section 7     |
+   | REFUSED_STREAM      | 0x7  | Stream not processed | Section 7     |
+   | CANCEL              | 0x8  | Stream cancelled     | Section 7     |
+   | COMPRESSION_ERROR   | 0x9  | Compression state    | Section 7     |
+   |                     |      | not updated          |               |
+   | CONNECT_ERROR       | 0xa  | TCP connection error | Section 7     |
+   |                     |      | for CONNECT method   |               |
+   | ENHANCE_YOUR_CALM   | 0xb  | Processing capacity  | Section 7     |
+   |                     |      | exceeded             |               |
+   | INADEQUATE_SECURITY | 0xc  | Negotiated TLS       | Section 7     |
+   |                     |      | parameters not       |               |
+   |                     |      | acceptable           |               |
+   | HTTP_1_1_REQUIRED   | 0xd  | Use HTTP/1.1 for the | Section 7     |
+   |                     |      | request              |               |
+   +---------------------+------+----------------------+---------------+
+
+</code>
+</pre>
+</details>
+
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+11.5.  HTTP2-Settings Header Field Registration
+
+   This section registers the HTTP2-Settings header field in the
+   "Permanent Message Header Field Names" registry [BCP90].
+
+   Header field name:  HTTP2-Settings
+
+   Applicable protocol:  http
+
+   Status:  standard
+
+   Author/Change controller:  IETF
+
+   Specification document(s):  Section 3.2.1 of this document
+
+   Related information:  This header field is only used by an HTTP/2
+      client for Upgrade-based negotiation.
+
+</code>
+</pre>
+</details>
+
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+11.6.  PRI Method Registration
+
+   This section registers the "PRI" method in the "HTTP Method Registry"
+   ([RFC7231], Section 8.1).
+
+   Method Name:  PRI
+
+   Safe:  Yes
+
+   Idempotent:  Yes
+
+   Specification document(s):  Section 3.5 of this document
+
+   Related information:  This method is never used by an actual client.
+      This method will appear to be used when an HTTP/1.1 server or
+      intermediary attempts to parse an HTTP/2 connection preface.
+
+</code>
+</pre>
+</details>
+
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+11.7.  The 421 (Misdirected Request) HTTP Status Code
+
+   This document registers the 421 (Misdirected Request) HTTP status
+   code in the "HTTP Status Codes" registry ([RFC7231], Section 8.2).
+
+   Status Code:  421
+
+   Short Description:  Misdirected Request
+
+   Specification:  Section 9.1.2 of this document
+
+</code>
+</pre>
+</details>
+
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+11.8.  The h2c Upgrade Token
+
+   This document registers the "h2c" upgrade token in the "HTTP Upgrade
+   Tokens" registry ([RFC7230], Section 8.6).
+
+   Value:  h2c
+
+   Description:  Hypertext Transfer Protocol version 2 (HTTP/2)
+
+   Expected Version Tokens:  None
+
+   Reference:  Section 3.2 of this document
+
+</code>
+</pre>
+</details>
+
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+
+</code>
+</pre>
+</details>
+
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+
+</code>
+</pre>
+</details>
+
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+
+</code>
+</pre>
+</details>
+
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+
+</code>
+</pre>
+</details>
+
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+
+</code>
+</pre>
+</details>
+
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+
+</code>
+</pre>
+</details>
+
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+
+</code>
+</pre>
+</details>
+
+
+<details>
+<summary>原文</summary>
+<pre>
+<code>
+
+
+</code>
+</pre>
+</details>

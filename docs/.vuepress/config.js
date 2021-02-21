@@ -9,16 +9,15 @@ module.exports = {
         lastUpdated: 'Last Updated',
         nav: [
             {
-                text: '协议',
+                text: '网络协议',
                 link: '/standard/',
+                items: [
+                    { text: 'HTTP 2', link: '/standard/http2/' },
+                    { text: 'WebSocket', link: '/standard/websocket/' }
+                ]
             },
         ],
-        sidebar: {
-            "/standard/": [
-                // "/standard/",
-                "/standard/http2",
-                "/standard/websocket",
-            ],
-        }
+        sidebar: 'auto',
+        collapsable: true,
     }
 };
